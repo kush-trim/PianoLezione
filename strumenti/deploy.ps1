@@ -9,7 +9,7 @@ param(
   [string]$Dir = "pianolezione",
   [int]$Port = 64100,
   [string]$Pm2Name = "pianolezione",
-  [string]$Health = "/login"
+  [string]$Health = "/api/health"
 )
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
@@ -64,6 +64,16 @@ fi
 [ -f data/pianolezione.db ] && cp data/pianolezione.db data/pianolezione.prima-del-deploy.db
 echo "== aggiorno il database"
 npx prisma db push
+
+# La build arriva da Windows: i pacchetti esterni in .next/node_modules (tra cui il modulo nativo di
+# SQLite) sono copie di quelli del PC. Si sostituiscono con collegamenti a quelli installati qui.
+for p in .next/node_modules/* .next/node_modules/@*/*; do
+  [ -e "$p" ] || continue
+  case "$p" in */@*) [ "$(dirname "$p")" = .next/node_modules ] && continue ;; esac
+  name=$(printf %s "${p#.next/node_modules/}" | sed -E "s/-[0-9a-f]{16}$//")
+  [ -d "node_modules/$name" ] || { echo "Pacchetto mancante sul server: $name"; exit 1; }
+  rm -rf "$p" && ln -s "$PWD/node_modules/$name" "$p"
+done
 
 if pm2 describe @PM2NAME@ >/dev/null 2>&1; then
   pm2 restart @PM2NAME@ --update-env >/dev/null
