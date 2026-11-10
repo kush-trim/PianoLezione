@@ -87,11 +87,16 @@ export function IconButton({
 
 // --- Campi ---
 
-export const inputClass =
-  "h-9 w-full rounded-md border border-line-strong bg-surface px-2.5 placeholder:text-muted/60 disabled:bg-sunken disabled:text-muted";
+const inputBase =
+  "h-9 rounded-md border border-line-strong bg-surface px-2.5 placeholder:text-muted/60 disabled:bg-sunken disabled:text-muted";
+export const inputClass = `${inputBase} w-full`;
 
 export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cx(inputClass, className)} {...rest} />;
+  // La larghezza piena è solo il valore predefinito: se chi usa il campo indica una larghezza
+  // (w-20, w-56…) deve valere quella. Con entrambe le classi vincerebbe quella scritta per ultima
+  // nel CSS generato, non quella voluta.
+  const hasWidth = /(^|\s)(max-sm:|sm:|md:|lg:)?w-/.test(className ?? "");
+  return <input className={cx(hasWidth ? inputBase : inputClass, className)} {...rest} />;
 }
 
 export function Field({

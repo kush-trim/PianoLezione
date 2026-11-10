@@ -39,6 +39,9 @@ function proposePhases(available: number): PhaseDTO[] {
   return base.map(([name, modality], i) => newPhase({ name, modality, durationMin: durations[i] }));
 }
 
+const PHASE_GRID =
+  "grid items-center gap-2 grid-cols-[1.25rem_minmax(0,1fr)_4.75rem_1.75rem] sm:grid-cols-[1.25rem_minmax(0,1.3fr)_minmax(0,1fr)_5.5rem_1.75rem]";
+
 const textareaClass = "w-full resize-none rounded-md border border-line-strong bg-surface px-3 py-2 leading-relaxed placeholder:text-muted/60";
 
 export default function NuovoPianoPage() {
@@ -336,12 +339,21 @@ export default function NuovoPianoPage() {
               </div>
             </div>
 
+            {phases.length > 0 && (
+              <div className={cx(PHASE_GRID, "text-[13px] font-medium text-muted")} aria-hidden>
+                <span />
+                <span>Fase</span>
+                <span className="max-sm:hidden">Modalità</span>
+                <span>Minuti</span>
+                <span />
+              </div>
+            )}
             <ul className="space-y-1.5">
               {phases.map((p, i) => (
-                <li key={p.id} className="flex items-center gap-2">
-                  <span className="tabular w-5 shrink-0 text-right text-[13px] text-muted">{i + 1}</span>
-                  <Input value={p.name} onChange={(e) => patchPhase(p.id, { name: e.target.value })} placeholder="Fase" aria-label={`Nome della fase ${i + 1}`} className="min-w-0 flex-[1.3]" />
-                  <Input value={p.modality} onChange={(e) => patchPhase(p.id, { modality: e.target.value })} placeholder="modalità" aria-label={`Modalità della fase ${i + 1}`} className="min-w-0 flex-1 max-sm:hidden" />
+                <li key={p.id} className={PHASE_GRID}>
+                  <span className="tabular text-right text-[13px] text-muted">{i + 1}</span>
+                  <Input value={p.name} onChange={(e) => patchPhase(p.id, { name: e.target.value })} placeholder="Fase" aria-label={`Nome della fase ${i + 1}`} />
+                  <Input value={p.modality} onChange={(e) => patchPhase(p.id, { modality: e.target.value })} placeholder="modalità" aria-label={`Modalità della fase ${i + 1}`} className="max-sm:hidden" />
                   <Input
                     type="number"
                     min={0}
@@ -350,7 +362,7 @@ export default function NuovoPianoPage() {
                     value={p.durationMin}
                     onChange={(e) => patchPhase(p.id, { durationMin: Math.max(0, Math.round(Number(e.target.value)) || 0) })}
                     aria-label={`Minuti della fase ${i + 1}`}
-                    className="tabular w-20 shrink-0"
+                    className="tabular"
                   />
                   <IconButton label={`Elimina la fase ${p.name || i + 1}`} className="hover:bg-danger-soft hover:text-danger" onClick={() => setPhases(phases.filter((x) => x.id !== p.id))}>
                     <Trash2 className="size-4" />
@@ -358,6 +370,7 @@ export default function NuovoPianoPage() {
                 </li>
               ))}
             </ul>
+            {phases.length === 0 && <p className="text-muted">Nessuna fase: aggiungine una qui sotto, oppure premi «Proponi di nuovo».</p>}
 
             <div className="flex flex-wrap items-center gap-1.5">
               <button type="button" onClick={() => setPhases([...phases, newPhase()])} className="inline-flex h-7 items-center gap-1 rounded-full bg-accent px-3 text-[13px] font-medium text-white hover:bg-accent-hover">
