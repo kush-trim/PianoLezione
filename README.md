@@ -59,3 +59,11 @@ Tutte le rotte, tranne registrazione e login, richiedono la sessione (cookie `ps
 ## Pubblicazione online
 
 Il database locale è SQLite (`dev.db`). Per pubblicare il sito serve un database in rete: in `prisma/schema.prisma` si cambia `provider` in `postgresql`, in `src/lib/db.ts` si sostituisce l'adapter con `@prisma/adapter-pg`, e si imposta `DATABASE_URL`. Lo schema non usa tipi specifici di SQLite.
+
+## Deploy sul server
+
+```powershell
+powershell -File strumenti\deploy.ps1
+```
+
+Impacchetta l'ultimo commit, lo copia sul server, installa le dipendenze se sono cambiate, aggiorna il database, fa la build e riavvia il processo pm2. Il database (`data/`) e il file `.env` del server non vengono toccati. L'indirizzo del server va scritto in `strumenti/server-remoto.txt`, che non è in git.

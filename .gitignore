@@ -53,3 +53,6 @@ next-env.d.ts
 # file locali degli strumenti
 .playwright-cli/
 .claude/
+
+# indirizzo del server: resta solo sul PC
+/strumenti/server-remoto.txt
