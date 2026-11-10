@@ -20,6 +20,18 @@ $config = @(Get-Content $configFile | Where-Object { $_.Trim() })
 $Server = $config[0].Trim()
 $PublicUrl = if ($config.Count -gt 1) { $config[1].Trim() } else { "" }
 
+# La build si fa qui sul PC: sul server Turbopack non funziona, perche' il firewall blocca le porte
+# locali che usa per parlare con i suoi processi di supporto. Deve corrispondere al commit pubblicato.
+if (git -C $root status --porcelain) { throw "Ci sono modifiche non committate: fai il commit prima del deploy" }
+Push-Location $root
+try {
+  npm run build
+  if ($LASTEXITCODE -ne 0) { throw "build non riuscita" }
+  $nextTar = Join-Path $env:TEMP "$Dir-next.tar"
+  tar -cf $nextTar --exclude=.next/cache --exclude=.next/dev .next
+  if ($LASTEXITCODE -ne 0) { throw "impacchettamento della build non riuscito" }
+} finally { Pop-Location }
+
 # Solo cio' che e' committato. autocrlf=false: gli a capo di Windows romperebbero gli script su Linux.
 $tar = Join-Path $env:TEMP "$Dir-deploy.tar"
 git -C $root -c core.autocrlf=false archive --format=tar -o $tar HEAD
@@ -31,8 +43,9 @@ mkdir -p ~/@DIR@/data && cd ~/@DIR@
 
 # Si cancellano SOLO le cartelle del codice, cosi' spariscono i file tolti dal repository.
 # Mai data/ (database), .env, node_modules.
-rm -rf src prisma public strumenti
+rm -rf src prisma public strumenti .next
 tar -xf ~/@DIR@-deploy.tar && rm ~/@DIR@-deploy.tar
+tar -xf ~/@DIR@-next.tar && rm ~/@DIR@-next.tar
 
 # Impostazioni del server, fuori da git: create solo la prima volta.
 if [ ! -f .env ]; then
@@ -51,9 +64,6 @@ fi
 [ -f data/pianolezione.db ] && cp data/pianolezione.db data/pianolezione.prima-del-deploy.db
 echo "== aggiorno il database"
 npx prisma db push
-
-echo "== build"
-npm run build
 
 if pm2 describe @PM2NAME@ >/dev/null 2>&1; then
   pm2 restart @PM2NAME@ --update-env >/dev/null
@@ -74,9 +84,9 @@ $body = $remote.Replace("@DIR@", $Dir).Replace("@PM2NAME@", $Pm2Name).Replace("@
 $script = Join-Path $env:TEMP "$Dir-deploy.sh"
 [IO.File]::WriteAllText($script, $body.Replace("`r`n", "`n") + "`n", (New-Object Text.UTF8Encoding $false))
 
-scp -q $tar $script "${Server}:"
+scp -q $tar $nextTar $script "${Server}:"
 if ($LASTEXITCODE -ne 0) { throw "copia sul server non riuscita" }
-Remove-Item $tar, $script
+Remove-Item $tar, $nextTar, $script
 
 ssh $Server "sh $Dir-deploy.sh; s=`$?; rm -f $Dir-deploy.sh; exit `$s"
 if ($LASTEXITCODE -ne 0) { throw "aggiornamento sul server non riuscito (o il sito non risponde)" }

@@ -66,4 +66,4 @@ Il database locale è SQLite (`dev.db`). Per pubblicare il sito serve un databas
 powershell -File strumenti\deploy.ps1
 ```
 
-Impacchetta l'ultimo commit, lo copia sul server, installa le dipendenze se sono cambiate, aggiorna il database, fa la build e riavvia il processo pm2. Il database (`data/`) e il file `.env` del server non vengono toccati. L'indirizzo del server va scritto in `strumenti/server-remoto.txt`, che non è in git.
+Impacchetta l'ultimo commit, fa la build sul PC, la copia sul server, installa le dipendenze se sono cambiate, aggiorna il database e riavvia il processo pm2. Il database (`data/`) e il file `.env` del server non vengono toccati. L'indirizzo del server va scritto in `strumenti/server-remoto.txt`, che non è in git.
