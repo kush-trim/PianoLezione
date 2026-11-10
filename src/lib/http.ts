@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { connection } from "next/server";
 import { ZodError } from "zod";
 
@@ -14,6 +15,10 @@ export const notFound = () => new ApiError(404, "Non trovato");
 
 type Ctx<P> = { params: Promise<P> };
 
+/** Il metodo della richiesta in corso: serve a requireUser per i permessi dei token. */
+const requestMethod = new AsyncLocalStorage<string>();
+export const currentMethod = () => requestMethod.getStore() ?? "GET";
+
 /** Avvolge un route handler: converte gli errori in risposte JSON coerenti. */
 export function route<P = Record<string, never>>(
   fn: (req: Request, params: P) => Promise<Response | unknown>,
@@ -23,9 +28,11 @@ export function route<P = Record<string, never>>(
     // Fuori dal try: durante la build Next interrompe qui l'esecuzione.
     await connection();
     try {
-      const out = await fn(req, await ctx.params);
+      const params = await ctx.params;
+      const out = await requestMethod.run(req.method, () => fn(req, params));
       if (out instanceof Response) return out;
-      return Response.json(out ?? { ok: true });
+      // null è una risposta vera ("niente"), undefined vuol dire solo "fatto".
+      return Response.json(out === undefined ? { ok: true } : out);
     } catch (e) {
       if (e instanceof ApiError) {
         return Response.json({ error: e.message }, { status: e.status });

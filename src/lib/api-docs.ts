@@ -63,6 +63,8 @@ const tipi: Record<string, Fields | string> = {
     kind: '"gita" | "altro"',
     color: "colore",
     note: "string",
+    className: 'string — classe coinvolta, "" = tutte',
+    cancelsLessons: "boolean — le lezioni della classe quel giorno (o in quegli orari) non si tengono",
   },
   Obiettivo: { id: "string", verbo: "string — uno dei verbi dell'elenco", testo: "string" },
   Fase: {
@@ -92,6 +94,8 @@ const tipi: Record<string, Fields | string> = {
     allegati: "string",
     allegatiAuto: "boolean — true: gli allegati si ricavano dai materiali delle fasi",
     sezioniExtra: "{ id, titolo, testo }[]",
+    notaPost: "string — dopo la lezione: cosa riprendere (non va nel PDF)",
+    exercises: "{ id, title, fileName, size }[] — esercizi collegati",
     isTemplate: "boolean",
     slotIds: "string[] — lezioni dell'orario collegate",
     slots: "Lezione[] — con gli orari effettivi del giorno del piano",
@@ -117,6 +121,25 @@ const tipi: Record<string, Fields | string> = {
     color: "colore",
     order: "numero",
     planCount: "numero di piani contenuti",
+    schoolYearId: "string | null — cartella di un anno scolastico (\"Anno 2027/2028\")",
+  },
+  Esercizio: {
+    id: "string",
+    title: "string",
+    fileName: "string",
+    size: "numero di byte",
+    note: "string",
+    createdAt: "data e ora ISO",
+    plans: "{ id, title, date }[] — piani collegati (anche nessuno)",
+  },
+  Token: {
+    id: "string",
+    name: "string",
+    prefix: "string — i primi caratteri, per riconoscerlo",
+    scope: '"read" | "write" | "feed"',
+    lastUsedAt: "data e ora ISO | null",
+    expiresAt: "data e ora ISO | null",
+    createdAt: "data e ora ISO",
   },
   Versione: { id: "string", createdAt: "data e ora ISO", title: "string", phaseCount: "numero", totalMin: "numero" },
   FasePredefinita: { id: "string", name: "string", modality: "string", durationMin: "numero" },
@@ -162,6 +185,8 @@ const eventoCorpo: Fields = {
   "kind?": '"gita" | "altro" (predefinito altro)',
   "color?": "colore (predefinito amber)",
   "note?": "string",
+  "className?": 'string ("" = tutte le classi)',
+  "cancelsLessons?": "boolean (predefinito false)",
 };
 
 const periodoCorpo: Fields = { name: "string", startDate: "data", endDate: "data, uguale o successiva a startDate" };
@@ -223,6 +248,41 @@ const gruppi: Record<string, Endpoint[]> = {
         years: "Periodo[] — tutti gli anni scolastici",
         weeks: "{ monday: data, number: numero | null, holiday: string | null, plans: numero }[]",
       },
+    },
+    {
+      metodo: "GET",
+      percorso: "/api/classes/remaining",
+      descrizione:
+        "Per ogni classe e materia, le lezioni che restano fino alla fine dell'anno scolastico (senza vacanze, lezioni annullate ed eventi che le tolgono).",
+      parametri: { "date?": "data da cui contare (predefinito: oggi)" },
+      risposta: {
+        year: "Periodo | null",
+        from: "data",
+        schoolDaysLeft: "numero — giorni feriali di scuola rimasti",
+        weeksLeft: "numero — settimane di scuola rimaste",
+        classes: "{ className, subject, color, remaining, remainingMin, planned, done, daysLeft, nextDate }[]",
+      },
+    },
+    {
+      metodo: "POST",
+      percorso: "/api/year/propose",
+      descrizione:
+        "Per i piani arrivati in una cartella di un anno scolastico (o in una sua sottocartella): la settimana e la lezione proposte in quell'anno, cioè la stessa settimana e la stessa posizione dell'anno di provenienza. Non salva nulla.",
+      corpo: {
+        targetFolderId: "string",
+        plans: "{ planId: string, sourceId?: string — il piano da cui è stato copiato }[]",
+      },
+      risposta:
+        "null se la cartella non è di un anno o i piani sono già in quell'anno; altrimenti { year: Periodo, weeks: { monday, number, lessons: { date, slotIds, startTime, endTime, subject, className, taken }[] }[], plans: { planId, title, sourceDate, sourceWeek, monday, date, slotIds }[] }",
+    },
+    {
+      metodo: "GET",
+      percorso: "/api/feed/:token",
+      descrizione:
+        "L'orario in formato iCal (da 3 mesi fa a un anno da oggi): lezioni con il titolo del piano, eventi e vacanze. Il token, di ambito \"feed\", sostituisce l'accesso.",
+      autenticazione: false,
+      risposta: "text/calendar",
+      errori: { 404: "token inesistente, revocato o di un altro ambito" },
     },
   ],
 
@@ -361,6 +421,26 @@ const gruppi: Record<string, Endpoint[]> = {
       parametri: { "download?": '"1" per scaricarlo invece di aprirlo nel browser' },
       risposta: "file application/pdf",
     },
+    {
+      metodo: "POST",
+      percorso: "/api/plans/bulk-delete",
+      descrizione: "Elimina più piani in una volta.",
+      corpo: { ids: "string[]" },
+      risposta: "{ deleted: numero }",
+    },
+    {
+      metodo: "POST",
+      percorso: "/api/plans/restore",
+      descrizione: "Ricrea un piano eliminato (Annulla). Cartella, lezioni ed esercizi che non esistono più vengono lasciati fuori.",
+      corpo: { "...": "gli stessi campi di PUT /api/plans/:id, con title obbligatorio", "isTemplate?": "boolean", "exerciseIds?": "string[]" },
+      risposta: "Piano (con un id nuovo)",
+    },
+    {
+      metodo: "GET",
+      percorso: "/api/plans/:id/previous",
+      descrizione: "La lezione precedente della stessa classe e materia con una nota «dopo la lezione».",
+      risposta: "{ id, title, date, notaPost } | null",
+    },
     { metodo: "GET", percorso: "/api/materials", descrizione: "I materiali già usati nei propri piani, dal più frequente (per i suggerimenti).", risposta: "string[]" },
   ],
 
@@ -382,6 +462,52 @@ const gruppi: Record<string, Endpoint[]> = {
       errori: { 400: "una cartella non può finire dentro sé stessa" },
     },
     { metodo: "DELETE", percorso: "/api/folders/:id", descrizione: "Elimina la cartella e le sottocartelle. I piani restano, senza cartella.", risposta: ok },
+    {
+      metodo: "POST",
+      percorso: "/api/folders/paste",
+      descrizione:
+        'Incolla cartelle e piani in una cartella. "copy" li copia (una cartella con tutto il suo contenuto, i nomi doppi diventano "… (copia)"); "cut" li sposta.',
+      corpo: {
+        op: '"copy" | "cut"',
+        "planIds?": "string[]",
+        "folderIds?": "string[]",
+        targetFolderId: "string | null — null = fuori dalle cartelle",
+      },
+      risposta:
+        'copy: { op, createdFolders: string[], createdPlans: string[], planMap: { planId, sourceId }[] }; cut: { op, movedFolders: { id, from }[], movedPlans: { id, from }[], planMap }',
+      errori: { 400: "cartella o piano non valido, oppure una cartella spostata dentro sé stessa" },
+    },
+  ],
+
+  Esercizi: [
+    {
+      metodo: "GET",
+      percorso: "/api/exercises",
+      descrizione: "Gli esercizi caricati, dal più recente, con i piani collegati.",
+      parametri: { "q?": "testo cercato in titolo e nome del file" },
+      risposta: "Esercizio[]",
+    },
+    {
+      metodo: "POST",
+      percorso: "/api/exercises",
+      descrizione:
+        "Carica uno o più file (multipart/form-data): PDF, Word, Excel, PowerPoint, OpenDocument, immagini, testo, GeoGebra, zip. Massimo 15 MB per file, 20 file per volta.",
+      corpo: { file: "uno o più file", "title?": "string (solo con un file)", "planId?": "string — li collega subito a questo piano" },
+      risposta: "Esercizio[]",
+      errori: { 400: "tipo di file non ammesso, file troppo grande o PDF non valido" },
+    },
+    { metodo: "GET", percorso: "/api/exercises/:id", descrizione: "Un esercizio.", risposta: "Esercizio" },
+    { metodo: "PATCH", percorso: "/api/exercises/:id", descrizione: "Cambia titolo o nota.", corpo: { "title?": "string", "note?": "string" }, risposta: "Esercizio" },
+    { metodo: "DELETE", percorso: "/api/exercises/:id", descrizione: "Elimina l'esercizio e i suoi collegamenti (i piani restano).", risposta: ok },
+    {
+      metodo: "GET",
+      percorso: "/api/exercises/:id/file",
+      descrizione: "Il file. PDF, immagini e testo si aprono nel browser, gli altri formati si scaricano.",
+      parametri: { "download?": '"1" per scaricarlo sempre' },
+      risposta: "il file",
+    },
+    { metodo: "POST", percorso: "/api/exercises/:id/plans/:planId", descrizione: "Collega l'esercizio a un piano.", risposta: "Esercizio" },
+    { metodo: "DELETE", percorso: "/api/exercises/:id/plans/:planId", descrizione: "Toglie il collegamento (il file resta).", risposta: "Esercizio" },
   ],
 
   "Fasi predefinite": [
@@ -438,12 +564,55 @@ const gruppi: Record<string, Endpoint[]> = {
     },
     { metodo: "DELETE", percorso: "/api/verbs/:id", descrizione: "Toglie un verbo dall'elenco.", risposta: ok },
     { metodo: "GET", percorso: "/api/school-years", descrizione: "Gli anni scolastici, dal più recente.", risposta: "Periodo[]" },
-    { metodo: "POST", percorso: "/api/school-years", descrizione: "Aggiunge un anno scolastico.", corpo: periodoCorpo, risposta: "Periodo" },
+    {
+      metodo: "POST",
+      percorso: "/api/school-years",
+      descrizione: 'Aggiunge un anno scolastico e crea la sua cartella ("Anno 2027/2028").',
+      corpo: periodoCorpo,
+      risposta: "Periodo con folderId",
+    },
+    {
+      metodo: "POST",
+      percorso: "/api/school-years/import",
+      descrizione:
+        "Legge un calendario scolastico (es. il PDF del Cantone Ticino) e restituisce anno e vacanze trovati, senza salvare. JSON { url } o { text }, oppure multipart con il campo file (PDF).",
+      corpo: { "url?": "indirizzo https di un PDF", "text?": "testo del calendario" },
+      risposta: "{ year: { name, startDate, endDate } | null, holidays: { name, startDate, endDate }[], warnings: string[] }",
+      errori: { 400: "documento non leggibile o senza date" },
+    },
+    {
+      metodo: "POST",
+      percorso: "/api/school-years/import/apply",
+      descrizione:
+        "Salva anno e vacanze letti. Un anno che si sovrappone viene aggiornato; se l'anno è nuovo viene creata anche la sua cartella. Le vacanze con le stesse date non si duplicano.",
+      corpo: { year: "{ name, startDate, endDate }", holidays: "{ name, startDate, endDate }[]" },
+      risposta: "{ yearId, created: boolean, folderId: string | null, holidaysAdded, holidaysSkipped }",
+    },
     { metodo: "PUT", percorso: "/api/school-years/:id", descrizione: "Modifica un anno scolastico.", corpo: periodoCorpo, risposta: ok },
     { metodo: "DELETE", percorso: "/api/school-years/:id", descrizione: "Elimina un anno scolastico (lezioni e piani restano).", risposta: ok },
     { metodo: "GET", percorso: "/api/holidays", descrizione: "Le vacanze inserite a mano, in ordine di data.", risposta: "Periodo[]" },
     { metodo: "POST", percorso: "/api/holidays", descrizione: "Aggiunge una vacanza o un giorno senza scuola.", corpo: periodoCorpo, risposta: "Periodo" },
     { metodo: "DELETE", percorso: "/api/holidays/:id", descrizione: "Elimina una vacanza.", risposta: ok },
+    {
+      metodo: "GET",
+      percorso: "/api/settings/tokens",
+      descrizione: "I token API e i link del calendario (solo con la sessione, non con un token).",
+      risposta: "Token[]",
+    },
+    {
+      metodo: "POST",
+      percorso: "/api/settings/tokens",
+      descrizione: "Crea un token. Il valore compare solo in questa risposta (solo con la sessione).",
+      corpo: { name: "string", scope: '"read" | "write" | "feed"', "expiresInDays?": "numero | null" },
+      risposta: "Token con token: string",
+    },
+    { metodo: "DELETE", percorso: "/api/settings/tokens/:id", descrizione: "Revoca un token (solo con la sessione).", risposta: ok },
+    {
+      metodo: "GET",
+      percorso: "/api/export",
+      descrizione: "Copia di sicurezza di tutti i propri dati in JSON (senza password, token, chiavi, link dei calendari e file degli esercizi).",
+      risposta: "file JSON da scaricare",
+    },
   ],
 
   "Assistente AI": [
@@ -485,17 +654,20 @@ export const apiDocs = {
   nome: "PianoStudio API",
   descrizione: "API del sito per creare i piani lezione. Tutte le richieste e le risposte sono in JSON, salvo dove indicato.",
   autenticazione: {
-    tipo: "cookie di sessione",
+    tipo: "cookie di sessione oppure token API",
     cookie: "ps_session (httpOnly), impostato da /api/auth/register e /api/auth/login; dura 30 giorni",
+    token:
+      'Intestazione "Authorization: Bearer ps_…", con un token creato in Impostazioni → Accesso API. Ambito "read": solo GET; "write": tutte le operazioni. Con un token non si possono gestire token, chiavi AI, calendari collegati e impostazioni.',
     regola:
-      "Tutte le rotte richiedono la sessione, tranne quelle con autenticazione: false. Ogni utente vede e modifica solo i propri dati: una risorsa altrui risponde 404.",
+      "Tutte le rotte richiedono la sessione o un token, tranne quelle con autenticazione: false. Ogni utente vede e modifica solo i propri dati: una risorsa altrui risponde 404.",
   },
   convenzioni: {
     corpo: 'Le richieste con corpo vogliono l\'intestazione "Content-Type: application/json". Nei campi, "?" dopo il nome significa facoltativo.',
     errori: 'Gli errori hanno la forma { error: string } con un messaggio in italiano.',
     codici: {
       400: "dati non validi",
-      401: "sessione mancante o scaduta",
+      401: "sessione mancante o scaduta, token non valido",
+      403: "operazione non permessa con questo token",
       404: "risorsa inesistente o di un altro utente",
       409: "conflitto (es. doppione)",
       500: "errore interno",

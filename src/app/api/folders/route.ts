@@ -20,6 +20,7 @@ export const GET = route(async () => {
       color: f.color,
       order: f.order,
       planCount: f._count.plans,
+      schoolYearId: f.schoolYearId,
     }),
   );
 });
@@ -38,5 +39,5 @@ export const POST = route(async (req) => {
       order,
     },
   });
-  return { id: f.id, parentId: f.parentId, name: f.name, color: f.color, order: f.order, planCount: 0 };
+  return { id: f.id, parentId: f.parentId, name: f.name, color: f.color, order: f.order, planCount: 0, schoolYearId: null };
 });

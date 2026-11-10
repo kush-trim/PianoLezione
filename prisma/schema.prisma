@@ -24,6 +24,8 @@ model User {
   schoolYears    SchoolYear[]
   holidays       Holiday[]
   events         Event[]
+  apiTokens      ApiToken[]
+  exercises      Exercise[]
 }
 
 model Session {
@@ -45,12 +47,16 @@ model Folder {
   name      String
   color     String   @default("slate")
   order     Int      @default(0)
+  // Cartella creata per un anno scolastico ("Anno 2027/2028"): i piani copiati qui
+  // dentro (anche in sottocartelle) vengono riportati in quell'anno.
+  schoolYearId String?
   createdAt DateTime @default(now())
 
-  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parent   Folder?      @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
-  children Folder[]     @relation("FolderTree")
-  plans    LessonPlan[]
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent     Folder?      @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children   Folder[]     @relation("FolderTree")
+  plans      LessonPlan[]
+  schoolYear SchoolYear?  @relation(fields: [schoolYearId], references: [id], onDelete: SetNull)
 
   @@index([userId])
 }
@@ -96,6 +102,8 @@ model LessonPlan {
   allegati               String  @default("")
   allegatiAuto           Boolean @default(true)
   sezioniExtra           String  @default("[]") // JSON: [{ id, titolo, testo }]
+  // Dopo la lezione: com'è andata, cosa riprendere. Compare nella lezione successiva della classe.
+  notaPost               String  @default("")
   // Obiettivi strutturati, JSON: [{ id, verbo, testo }]. Se presenti, i campi di testo
   // obiettivoInsegnamento / obiettivoApprendimento vengono generati da qui.
   obiettiviInsJson       String  @default("[]")
@@ -107,9 +115,10 @@ model LessonPlan {
 
   user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   folder   Folder?       @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  phases   Phase[]
-  slots    PlanSlot[]
-  versions PlanVersion[]
+  phases    Phase[]
+  slots     PlanSlot[]
+  versions  PlanVersion[]
+  exercises PlanExercise[]
 
   @@index([userId, date])
   @@index([userId, folderId])
@@ -199,7 +208,8 @@ model SchoolYear {
   startDate String // "YYYY-MM-DD"
   endDate   String
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folders Folder[]
 
   @@index([userId])
 }
@@ -243,8 +253,67 @@ model Event {
   kind      String  @default("altro") // "gita" | "altro"
   color     String  @default("amber")
   note      String  @default("")
+  // Classe coinvolta ("" = tutte) e se le sue lezioni quel giorno (o in quegli orari) non si tengono.
+  className      String  @default("")
+  cancelsLessons Boolean @default(false)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, date])
+}
+
+// Token per usare le API senza sessione (Authorization: Bearer ...) o per il link del calendario.
+model ApiToken {
+  id         String    @id @default(cuid())
+  userId     String
+  name       String
+  tokenHash  String    @unique
+  prefix     String // primi caratteri, per riconoscerlo nell'elenco
+  scope      String // "read" | "write" | "feed"
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Esercizio caricato come file (PDF, Word, Excel, PowerPoint, immagini…). Si collega a zero, uno o più piani (e un piano a zero o più esercizi).
+// Il file sta nel database: il deploy conserva solo la cartella data/ con il database.
+model Exercise {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  fileName  String
+  mimeType  String   @default("application/pdf")
+  size      Int
+  note      String   @default("")
+  createdAt DateTime @default(now())
+
+  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  file  ExerciseFile?
+  plans PlanExercise[]
+
+  @@index([userId])
+}
+
+// Il contenuto del file, a parte: gli elenchi non lo caricano mai.
+model ExerciseFile {
+  exerciseId String @id
+  data       Bytes
+
+  exercise Exercise @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+}
+
+model PlanExercise {
+  planId     String
+  exerciseId String
+  createdAt  DateTime @default(now())
+
+  plan     LessonPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  exercise Exercise   @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@id([planId, exerciseId])
+  @@index([exerciseId])
 }

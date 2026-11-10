@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultSchoolYear, occurrencesOn, slotValidOn, yearFor, yearWeeks } from "./calendar";
+import { cancellingEvent, defaultSchoolYear, occurrencesOn, remainingByClass, schoolOccurrences, slotValidOn, yearFor, yearWeeks } from "./calendar";
 import { decrypt, decryptJson, encrypt, encryptJson } from "./crypto";
 import { expandEvents, parseIcal } from "./ical";
 import { objectivesText } from "./plan-utils";
@@ -163,5 +163,49 @@ describe("cifratura", () => {
     expect(decrypt("")).toBeNull();
     expect(decryptJson("non-valido", { vuoto: true })).toEqual({ vuoto: true });
     expect(decryptJson(encryptJson({ a: 1 }), {})).toEqual({ a: 1 });
+  });
+});
+
+describe("lezioni che si tengono davvero", () => {
+  const gita = { title: "Gita", date: "2026-11-17", startTime: null, endTime: null, className: "3A", cancelsLessons: true };
+
+  it("nei giorni di vacanza non ci sono lezioni", () => {
+    expect(schoolOccurrences("2026-11-17", [slot()], [], new Set(["2026-11-17"]))).toEqual([]);
+    expect(schoolOccurrences("2026-11-17", [slot()], [], new Set())).toHaveLength(1);
+  });
+
+  it("un evento della classe toglie le sue lezioni, non quelle delle altre classi", () => {
+    const other = slot({ id: "s2", className: "2B" });
+    const out = schoolOccurrences("2026-11-17", [slot(), other], [], new Set(), [gita]);
+    expect(out.map((o) => o.slot.id)).toEqual(["s2"]);
+  });
+
+  it("un evento senza classe vale per tutte; uno con orari solo per le lezioni sovrapposte", () => {
+    const occ = occurrencesOn("2026-11-17", [slot()], [])[0];
+    expect(cancellingEvent(occ, [{ ...gita, className: "" }])).not.toBeNull();
+    expect(cancellingEvent(occ, [{ ...gita, startTime: "10:00", endTime: "12:00" }])).toBeNull();
+    expect(cancellingEvent(occ, [{ ...gita, startTime: "09:00", endTime: "12:00" }])).not.toBeNull();
+    expect(cancellingEvent(occ, [{ ...gita, cancelsLessons: false }])).toBeNull();
+  });
+});
+
+describe("lezioni rimaste fino alla fine dell'anno", () => {
+  const year = { startDate: "2026-11-02", endDate: "2026-11-29" }; // 4 settimane
+  const holidays = new Set(["2026-11-24"]); // un martedì di vacanza
+
+  it("conta lezioni fatte, rimaste e pianificate, senza vacanze e annullamenti", () => {
+    const ex: ExceptionDTO = {
+      id: "e", slotId: "s1", date: "2026-11-17", kind: "annullata", startTime: null, endTime: null, room: null, note: "",
+    };
+    const r = remainingByClass(year, "2026-11-10", [slot()], [ex], holidays, [], [{ date: "2026-11-10", slotIds: ["s1"] }]);
+    expect(r.classes).toHaveLength(1);
+    const c = r.classes[0];
+    expect(c.done).toBe(1); // 3 novembre
+    expect(c.remaining).toBe(1); // 10 novembre (il 17 annullata, il 24 vacanza)
+    expect(c.remainingMin).toBe(90);
+    expect(c.planned).toBe(1);
+    expect(c.nextDate).toBe("2026-11-10");
+    // Giorni di scuola dal 10 al 29 novembre: 14 feriali meno il 24.
+    expect(r.schoolDaysLeft).toBe(13);
   });
 });

@@ -225,13 +225,16 @@ export function PageHeader({
   title,
   subtitle,
   actions,
+  compact,
 }: {
   title: string;
   subtitle?: ReactNode;
   actions?: ReactNode;
+  /** Meno spazio sotto: per le pagine che devono stare in una schermata. */
+  compact?: boolean;
 }) {
   return (
-    <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <header className={cx("flex flex-wrap items-end justify-between gap-3", compact ? "mb-3" : "mb-5")}>
       <div>
         <h1 className="font-display text-[26px] leading-tight font-semibold">{title}</h1>
         {subtitle && <p className="mt-0.5 text-muted">{subtitle}</p>}
@@ -279,17 +282,24 @@ export function ErrorNote({ children }: { children: ReactNode }) {
 
 // --- Toast ---
 
-type Toast = { id: number; text: string; kind: "ok" | "error" };
-const ToastContext = createContext<(text: string, kind?: Toast["kind"]) => void>(() => {});
+type ToastAction = { label: string; run: () => void };
+type Toast = { id: number; text: string; kind: "ok" | "error"; action?: ToastAction };
+type PushToast = (text: string, kind?: Toast["kind"], action?: ToastAction) => void;
+const ToastContext = createContext<PushToast>(() => {});
 export const useToast = () => useContext(ToastContext);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const push = useCallback((text: string, kind: Toast["kind"] = "ok") => {
-    const id = Date.now() + Math.random();
-    setToasts((t) => [...t, { id, text, kind }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), kind === "error" ? 6000 : 3000);
-  }, []);
+  const dismiss = useCallback((id: number) => setToasts((t) => t.filter((x) => x.id !== id)), []);
+  const push = useCallback<PushToast>(
+    (text, kind = "ok", action) => {
+      const id = Date.now() + Math.random();
+      setToasts((t) => [...t, { id, text, kind, action }]);
+      // Con un pulsante (es. Annulla) il messaggio resta un po' di più.
+      setTimeout(() => dismiss(id), kind === "error" || action ? 6000 : 3000);
+    },
+    [dismiss],
+  );
   return (
     <ToastContext.Provider value={push}>
       {children}
@@ -298,14 +308,43 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={t.id}
             className={cx(
-              "pointer-events-auto max-w-sm rounded-lg px-3.5 py-2.5 text-[13px] shadow-lg",
+              "pointer-events-auto flex max-w-sm items-center gap-3 rounded-lg px-3.5 py-2.5 text-[13px] shadow-lg",
               t.kind === "error" ? "bg-danger text-white" : "bg-ink text-white",
             )}
           >
-            {t.text}
+            <span className="flex-1">{t.text}</span>
+            {t.action && (
+              <button
+                type="button"
+                className="shrink-0 font-semibold underline-offset-2 hover:underline"
+                onClick={() => {
+                  dismiss(t.id);
+                  t.action!.run();
+                }}
+              >
+                {t.action.label}
+              </button>
+            )}
           </div>
         ))}
       </div>
     </ToastContext.Provider>
   );
 }
+
+// --- Tastiera ---
+
+/** Cmd su Mac, Ctrl su Windows e Linux. */
+export const isMod = (e: { metaKey: boolean; ctrlKey: boolean }) => e.metaKey || e.ctrlKey;
+
+/** Il tasto è stato premuto mentre si scrive (campo di testo) o dentro una finestra aperta? */
+export function isTyping(e: KeyboardEvent): boolean {
+  const el = e.target as HTMLElement | null;
+  if (!el) return false;
+  if (el.closest("dialog[open]")) return true;
+  return el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName);
+}
+
+export const isMac = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+/** "⌘" su Mac, "Ctrl+" altrove: per scrivere le scorciatoie nei suggerimenti. */
+export const modLabel = () => (isMac() ? "⌘" : "Ctrl+");

@@ -1,15 +1,16 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, FileText, Plus, TriangleAlert } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileText, Info, Plus, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { Button, IconButton, Loading, PageHeader, useToast } from "@/components/ui";
+import { RemainingDialog } from "@/components/RemainingDialog";
+import { Button, IconButton, isTyping, Loading, PageHeader, useToast } from "@/components/ui";
 import { AddDialog, EventDialog, LessonPanel } from "@/components/WeekDialogs";
 import { WeekGrid, type DayColumn, type GridBlock } from "@/components/WeekGrid";
 import { YearStrip, type YearData } from "@/components/YearStrip";
 import { api, errorMessage } from "@/lib/api";
-import { occurrencesOn } from "@/lib/calendar";
+import { schoolOccurrences } from "@/lib/calendar";
 import { swatch } from "@/lib/colors";
 import { addDays, consecutiveSlots, humanDate, mondayOf, parseDate, today, WEEKDAYS } from "@/lib/plan-utils";
 import type { EventDTO, Occurrence, PlanDTO, WeekDTO } from "@/lib/types";
@@ -22,6 +23,18 @@ function weekRange(days: string[]) {
   const start = a.toLocaleDateString("it-CH", sameMonth ? { day: "numeric" } : { day: "numeric", month: "long" });
   return `${start} – ${end}`;
 }
+
+const CLASS_KEY = "ps.settimana.classe";
+
+function readClassFilter(): string {
+  try {
+    return localStorage.getItem(CLASS_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+const sameClass = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 const Chip = ({ color, children, title }: { color: string; children: React.ReactNode; title?: string }) => {
   const c = swatch(color);
@@ -42,6 +55,29 @@ export default function SettimanaPage() {
   const [adding, setAdding] = useState<{ date: string; time: string } | null>(null);
   const [selected, setSelected] = useState<{ slotId: string; date: string } | null>(null);
   const [editingEvent, setEditingEvent] = useState<EventDTO | null>(null);
+  // Filtro per classe: "" = tutte. Resta salvato nel browser.
+  // La pagina mostra il caricamento finché arriva la settimana: leggere il browser qui non crea differenze col server.
+  const [classFilter, setClassFilterState] = useState(readClassFilter);
+  const [infoOpen, setInfoOpen] = useState(false);
+
+  const setClassFilter = (c: string) => {
+    setClassFilterState(c);
+    try {
+      localStorage.setItem(CLASS_KEY, c);
+    } catch {}
+  };
+
+  // Frecce: settimana precedente / successiva; T: oggi.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === "ArrowLeft") setMonday((m) => addDays(m, -7));
+      else if (e.key === "ArrowRight") setMonday((m) => addDays(m, 7));
+      else if (e.key.toLowerCase() === "t") setMonday(mondayOf(today()));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     let stale = false;
@@ -65,7 +101,18 @@ export default function SettimanaPage() {
   if (!week) return <Loading />;
 
   const now = today();
-  const occurrences: Occurrence[] = week.days.flatMap((d) => occurrencesOn(d, week.slots, week.exceptions));
+  const holidayDates = new Set(week.holidays.map((h) => h.date));
+  // Nei giorni di vacanza non ci sono lezioni; quelle tolte da una gita o giornata speciale spariscono.
+  const allOccurrences: Occurrence[] = week.days.flatMap((d) =>
+    schoolOccurrences(d, week.slots, week.exceptions, holidayDates, week.events),
+  );
+  const classes = [...new Set(week.slots.map((s) => s.className.trim()).filter(Boolean))].sort((a, b) =>
+    a.localeCompare(b, "it", { numeric: true }),
+  );
+  if (classFilter && !classes.includes(classFilter)) classes.push(classFilter);
+  const showClass = (c: string) => !classFilter || !c.trim() || sameClass(c, classFilter);
+  const occurrences = allOccurrences.filter((o) => !classFilter || sameClass(o.slot.className, classFilter));
+  const events = week.events.filter((e) => showClass(e.className));
   const planFor = (slotId: string, date: string) => week.plans.find((p) => p.date === date && p.slotIds.includes(slotId));
   const current = selected ? occurrences.find((o) => o.slot.id === selected.slotId && o.date === selected.date) ?? null : null;
 
@@ -73,7 +120,7 @@ export default function SettimanaPage() {
   const slotsForNewPlan = (occ: Occurrence) =>
     consecutiveSlots(
       occ.slot,
-      occurrences.filter((o) => o.date === occ.date && !o.cancelled).map((o) => o.slot),
+      allOccurrences.filter((o) => o.date === occ.date && !o.cancelled).map((o) => o.slot),
     )
       .filter((s) => !planFor(s.id, occ.date))
       .map((s) => s.id);
@@ -90,7 +137,7 @@ export default function SettimanaPage() {
   const days: DayColumn[] = week.days.map((date, i) => {
     const holiday = week.holidays.find((h) => h.date === date);
     const allDay = [
-      ...week.events.filter((e) => e.date === date && !e.startTime),
+      ...events.filter((e) => e.date === date && !e.startTime),
       ...week.external.filter((e) => e.date === date && !e.startTime),
     ];
     return {
@@ -140,23 +187,26 @@ export default function SettimanaPage() {
         onClick: () => setSelected({ slotId: o.slot.id, date: o.date }),
         content: (
           <>
-            <span className={o.cancelled ? "block truncate font-semibold line-through" : "block truncate font-semibold"}>
-              {o.slot.subject}
-              {o.slot.className && <span className="font-normal"> · {o.slot.className}</span>}
-            </span>
-            <span className="tabular block opacity-75">
-              {o.startTime}–{o.endTime}
-              {o.modified && " · spostata"}
+            {/* Ora sulla stessa riga della materia: anche una lezione corta mostra il titolo del piano. */}
+            <span className="flex items-baseline gap-1">
+              <span className={o.cancelled ? "min-w-0 flex-1 truncate font-semibold line-through" : "min-w-0 flex-1 truncate font-semibold"}>
+                {o.slot.subject}
+                {o.slot.className && <span className="font-normal"> · {o.slot.className}</span>}
+              </span>
+              <span className="tabular shrink-0 opacity-75" title={`${o.startTime}–${o.endTime}`}>
+                {o.startTime}
+                {o.modified && "*"}
+              </span>
             </span>
             {o.cancelled ? (
-              <span className="mt-0.5 block">Annullata</span>
+              <span className="block">Annullata</span>
             ) : plan ? (
-              <span className="mt-0.5 flex items-center gap-1 font-medium">
+              <span className="flex items-center gap-1 font-medium">
                 <FileText className="size-3 shrink-0" aria-hidden />
                 <span className="truncate">{plan.title || "Senza titolo"}</span>
               </span>
             ) : (
-              <span className="mt-0.5 flex items-center gap-1 opacity-60">
+              <span className="flex items-center gap-1 opacity-60">
                 <Plus className="size-3 shrink-0" aria-hidden />
                 Piano
               </span>
@@ -165,7 +215,7 @@ export default function SettimanaPage() {
         ),
       };
     }),
-    ...week.events
+    ...events
       .filter((e) => e.startTime && e.endTime)
       .map((e): GridBlock => ({
         key: `e-${e.id}`,
@@ -209,19 +259,43 @@ export default function SettimanaPage() {
   const holidayWeek = week.year && week.weekNumber === null && week.holidays.length > 0;
 
   return (
-    <>
+    // Tutto in una schermata: la griglia occupa l'altezza che resta sotto intestazione e anno.
+    <div className="flex h-[calc(100dvh-5.75rem)] min-h-[520px] flex-col md:h-[calc(100dvh-3.5rem)]">
       <PageHeader
         title={week.weekNumber ? `Settimana ${week.weekNumber}` : holidayWeek ? week.holidays[0].name : "Settimana"}
         subtitle={weekRange(week.days)}
+        compact
         actions={
           <>
-            <IconButton label="Settimana precedente" onClick={() => setMonday(addDays(monday, -7))}>
+            {classes.length > 0 && (
+              <select
+                aria-label="Mostra solo una classe"
+                value={classFilter}
+                onChange={(e) => setClassFilter(e.target.value)}
+                className="h-9 max-w-44 rounded-md border border-line-strong bg-surface px-2.5"
+              >
+                <option value="">Tutte le classi</option>
+                {classes.map((c) => (
+                  <option key={c} value={c}>
+                    Classe {c}
+                  </option>
+                ))}
+              </select>
+            )}
+            <IconButton
+              label={classFilter ? `Quanto manca alla fine dell'anno per la ${classFilter}` : "Quanto manca alla fine dell'anno"}
+              className="size-9"
+              onClick={() => setInfoOpen(true)}
+            >
+              <Info className="size-4" />
+            </IconButton>
+            <IconButton label="Settimana precedente (←)" className="size-9" onClick={() => setMonday(addDays(monday, -7))}>
               <ChevronLeft className="size-4" />
             </IconButton>
-            <Button onClick={() => setMonday(mondayOf(now))} disabled={isCurrentWeek}>
+            <Button onClick={() => setMonday(mondayOf(now))} disabled={isCurrentWeek} title="Oggi (T)">
               Oggi
             </Button>
-            <IconButton label="Settimana successiva" onClick={() => setMonday(addDays(monday, 7))}>
+            <IconButton label="Settimana successiva (→)" className="size-9" onClick={() => setMonday(addDays(monday, 7))}>
               <ChevronRight className="size-4" />
             </IconButton>
             <Button onClick={() => setAdding({ date: week.days.includes(now) ? now : monday, time: "08:00" })}>
@@ -239,39 +313,41 @@ export default function SettimanaPage() {
       {year && <YearStrip data={year} selected={monday} onSelect={setMonday} />}
 
       {week.calendarErrors.length > 0 && (
-        <p className="mb-3 flex items-start gap-2 rounded-lg bg-warn-soft px-3 py-2 text-[13px] text-warn">
+        <p className="mb-2 flex items-start gap-2 rounded-lg bg-warn-soft px-3 py-2 text-[13px] text-warn">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden />
           Calendario non leggibile in questo momento: {week.calendarErrors.join("; ")}
         </p>
       )}
 
-      <WeekGrid days={days} blocks={blocks} onEmptyClick={(weekday, time) => setAdding({ date: week.days[weekday - 1], time })} />
-      <p className="mt-2 text-xs text-muted">
-        {week.slots.length === 0
-          ? "Il tuo orario è vuoto: fai clic su un punto della griglia per aggiungere la prima lezione. Si ripeterà ogni settimana."
-          : "Clic su uno spazio vuoto per aggiungere una lezione o un evento, su una lezione per vederne i dettagli e il piano."}
-      </p>
-
       {unscheduled.length > 0 && (
-        <section className="mt-6">
-          <h2 className="mb-2 font-medium">Altri piani di questa settimana</h2>
-          <ul className="divide-y divide-line rounded-xl border border-line bg-surface">
-            {unscheduled.map((p) => (
-              <li key={p.id}>
-                <Link href={`/piani/${p.id}`} className="flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-sunken">
-                  <span className="truncate font-medium">{p.title || "Senza titolo"}</span>
-                  <span className="tabular shrink-0 text-muted">
-                    {p.date && humanDate(p.date, { weekday: true, year: false })} · {p.totalMin}’
-                  </span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <div className="mb-2 flex flex-wrap items-center gap-1.5 text-[13px]">
+          <span className="text-muted">Altri piani della settimana:</span>
+          {unscheduled.map((p) => (
+            <Link
+              key={p.id}
+              href={`/piani/${p.id}`}
+              className="flex max-w-64 items-center gap-1 rounded-full border border-line-strong bg-surface px-2.5 py-0.5 hover:border-accent"
+              title={p.date ? humanDate(p.date, { weekday: true, year: false }) : undefined}
+            >
+              <FileText className="size-3 shrink-0 text-muted" aria-hidden />
+              <span className="truncate">{p.title || "Senza titolo"}</span>
+            </Link>
+          ))}
+        </div>
+      )}
+
+      <div className="flex min-h-0 flex-1 flex-col">
+        <WeekGrid fit days={days} blocks={blocks} onEmptyClick={(weekday, time) => setAdding({ date: week.days[weekday - 1], time })} />
+      </div>
+      {week.slots.length === 0 && (
+        <p className="mt-1.5 text-xs text-muted">
+          Il tuo orario è vuoto: fai clic su un punto della griglia per aggiungere la prima lezione. Si ripeterà ogni settimana.
+        </p>
       )}
 
       <AddDialog
         at={adding}
+        classes={classes}
         monday={monday}
         settings={week.settings}
         lastSlot={week.slots[week.slots.length - 1]}
@@ -288,7 +364,13 @@ export default function SettimanaPage() {
         onChanged={reload}
         onCreateEmptyPlan={() => current && createEmptyPlan(current)}
       />
-      <EventDialog event={editingEvent} onClose={() => setEditingEvent(null)} onDone={reload} />
-    </>
+      <EventDialog event={editingEvent} classes={classes} onClose={() => setEditingEvent(null)} onDone={reload} />
+      <RemainingDialog
+        open={infoOpen}
+        onClose={() => setInfoOpen(false)}
+        className={classFilter}
+        lessonMinutes={week.settings.lessonMinutes}
+      />
+    </div>
   );
 }

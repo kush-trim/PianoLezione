@@ -11,7 +11,7 @@ export const GET = route(async () => {
 });
 
 export const PUT = route(async (req) => {
-  const user = await requireUser();
+  const user = await requireUser({ sessionOnly: true });
   const { aiKey, ...fields } = settingsSchema.parse(await readJson(req));
   const current = await ensureSettings(user.id);
 

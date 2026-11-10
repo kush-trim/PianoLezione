@@ -2,7 +2,7 @@
 
 import { addDays, mondayOf, weekdayOf } from "./plan-utils";
 import { toMin } from "./schedule";
-import type { ExceptionDTO, Occurrence, SlotDTO } from "./types";
+import type { ClassRemaining, EventDTO, ExceptionDTO, Occurrence, SlotDTO } from "./types";
 
 /** La lezione ricorrente vale in questa data? (giorno della settimana + periodo di validità) */
 export function slotValidOn(slot: SlotDTO, date: string): boolean {
@@ -31,6 +31,87 @@ export function occurrencesOn(date: string, slots: SlotDTO[], exceptions: Except
       };
     })
     .sort((a, b) => toMin(a.startTime) - toMin(b.startTime));
+}
+
+type CancellingEvent = Pick<EventDTO, "date" | "startTime" | "endTime" | "className" | "cancelsLessons" | "title">;
+
+const sameClass = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/** L'evento (gita, giornata speciale…) per cui questa lezione non si tiene, se c'è. */
+export function cancellingEvent<E extends CancellingEvent>(occ: Occurrence, events: E[]): E | null {
+  return (
+    events.find(
+      (e) =>
+        e.cancelsLessons &&
+        e.date === occ.date &&
+        (!e.className.trim() || sameClass(e.className, occ.slot.className)) &&
+        // Giornata intera, oppure orari che si sovrappongono alla lezione.
+        (!e.startTime || !e.endTime || (e.startTime < occ.endTime && e.endTime > occ.startTime)),
+    ) ?? null
+  );
+}
+
+/**
+ * Le lezioni di un giorno che vanno mostrate: nei giorni di vacanza non ce ne sono, e quelle
+ * tolte da un evento della classe spariscono. Le lezioni annullate a mano restano (spente).
+ */
+export function schoolOccurrences(
+  date: string,
+  slots: SlotDTO[],
+  exceptions: ExceptionDTO[],
+  holidays: Set<string>,
+  events: CancellingEvent[] = [],
+): Occurrence[] {
+  if (holidays.has(date)) return [];
+  return occurrencesOn(date, slots, exceptions).filter((o) => !cancellingEvent(o, events));
+}
+
+/**
+ * Lezioni fatte e rimaste nell'anno scolastico, per classe e materia, contando da `from` (incluso).
+ * Non contano vacanze, lezioni annullate e lezioni tolte da un evento.
+ */
+export function remainingByClass(
+  year: { startDate: string; endDate: string },
+  from: string,
+  slots: SlotDTO[],
+  exceptions: ExceptionDTO[],
+  holidays: Set<string>,
+  events: CancellingEvent[],
+  plans: { date: string | null; slotIds: string[] }[],
+): { classes: ClassRemaining[]; schoolDaysLeft: number } {
+  const planned = new Set(plans.flatMap((p) => (p.date ? p.slotIds.map((id) => `${p.date}|${id}`) : [])));
+  const byKey = new Map<string, ClassRemaining & { days: Set<string> }>();
+  let schoolDaysLeft = 0;
+
+  for (let date = year.startDate; date <= year.endDate; date = addDays(date, 1)) {
+    if (date >= from && weekdayOf(date) <= 5 && !holidays.has(date)) schoolDaysLeft++;
+    for (const o of schoolOccurrences(date, slots, exceptions, holidays, events)) {
+      if (o.cancelled) continue;
+      const key = `${o.slot.className}|${o.slot.subject}`;
+      let c = byKey.get(key);
+      if (!c) {
+        c = {
+          className: o.slot.className, subject: o.slot.subject, color: o.slot.color,
+          remaining: 0, remainingMin: 0, planned: 0, done: 0, daysLeft: 0, nextDate: null, days: new Set(),
+        };
+        byKey.set(key, c);
+      }
+      if (date < from) {
+        c.done++;
+        continue;
+      }
+      c.remaining++;
+      c.remainingMin += toMin(o.endTime) - toMin(o.startTime);
+      if (planned.has(`${date}|${o.slot.id}`)) c.planned++;
+      c.days.add(date);
+      c.nextDate ??= date;
+    }
+  }
+
+  const classes = [...byKey.values()]
+    .map(({ days, ...c }) => ({ ...c, daysLeft: days.size }))
+    .sort((a, b) => a.className.localeCompare(b.className, "it", { numeric: true }) || a.subject.localeCompare(b.subject));
+  return { classes, schoolDaysLeft };
 }
 
 export type YearWeek = {

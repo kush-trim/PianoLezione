@@ -2,6 +2,7 @@
 
 import { CalendarDays, Check, KeyRound, Plus, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { ApiTokens, Backup, CalendarImport, FeedLink } from "@/components/SettingsExtras";
 import { Button, cx, ErrorNote, Field, IconButton, Input, inputClass, Loading, PageHeader, useToast } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api";
 import { humanDate, SUBJECT } from "@/lib/plan-utils";
@@ -251,7 +252,10 @@ export default function ImpostazioniPage() {
           </p>
         </Section>
 
-        <Section title="Anno scolastico" description="Serve a numerare le settimane. Le settimane tutte di vacanza non vengono contate.">
+        <Section
+          title="Anno scolastico"
+          description="Serve a numerare le settimane; nei giorni di vacanza le lezioni non compaiono. Ogni anno nuovo ha la sua cartella in Cartelle: i piani copiati lì dentro vengono riportati in quell'anno."
+        >
           <ul className="divide-y divide-line rounded-lg border border-line">
             {years.map((y) => (
               <li key={y.id} className="flex items-center gap-3 px-3 py-2">
@@ -269,7 +273,16 @@ export default function ImpostazioniPage() {
             ))}
             {years.length === 0 && <li className="px-3 py-2 text-muted">Nessun anno scolastico.</li>}
           </ul>
-          <PeriodForm namePlaceholder="es. 2027/28" submitLabel="Aggiungi anno" onAdd={(p) => api.post("/api/school-years", p).then(loadLists)} />
+          <PeriodForm
+            namePlaceholder="es. 2027/28"
+            submitLabel="Aggiungi anno"
+            onAdd={(p) =>
+              api.post("/api/school-years", p).then(() => {
+                toast(`Anno ${p.name} creato, con la sua cartella in Cartelle`);
+                loadLists();
+              })
+            }
+          />
 
           <h3 className="mt-6 mb-2 font-medium">Vacanze e giorni senza scuola</h3>
           <ul className="divide-y divide-line rounded-lg border border-line">
@@ -285,6 +298,8 @@ export default function ImpostazioniPage() {
             {holidays.length === 0 && <li className="px-3 py-2 text-muted">Nessuna vacanza inserita. Puoi anche leggerle da un calendario, più sotto.</li>}
           </ul>
           <PeriodForm namePlaceholder="es. Vacanze di Natale" submitLabel="Aggiungi vacanza" onAdd={(p) => api.post("/api/holidays", p).then(loadLists)} />
+
+          <CalendarImport holidays={holidays} onImported={loadLists} />
         </Section>
 
         <Section title="Verbi per gli obiettivi" description="Gli obiettivi dei piani si scrivono solo con questi verbi, così hanno tutti la stessa forma. Scrivili alla terza persona.">
@@ -412,6 +427,21 @@ export default function ImpostazioniPage() {
             <ErrorNote>{calendarError}</ErrorNote>
             <p className="text-[13px] text-muted">Il link è riservato: viene salvato cifrato e qui sopra ne compare solo il sito di provenienza. I calendari si aggiornano circa ogni ora.</p>
           </form>
+        </Section>
+
+        <Section
+          title="Il tuo orario in un altro calendario"
+          description="Un link da aggiungere a Google Calendar, Apple Calendario o Outlook: lezioni (con il titolo del piano), eventi e vacanze, aggiornati da soli. Chi ha il link vede l'orario: se lo condividi per sbaglio, revocalo."
+        >
+          <FeedLink />
+        </Section>
+
+        <Section id="api" title="Accesso API" description="Token per usare le API da uno script o da un'altra app, senza fare l'accesso.">
+          <ApiTokens />
+        </Section>
+
+        <Section title="Copia di sicurezza" description="Tutti i tuoi dati (piani, cartelle, orario, anni, vacanze, eventi, verbi) in un file JSON. Senza password, chiavi e PDF degli esercizi.">
+          <Backup />
         </Section>
       </div>
     </>

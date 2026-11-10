@@ -202,30 +202,41 @@ async function assertPublicHost(url: URL) {
   const host = url.hostname.replace(/^\[|\]$/g, "");
   const addresses = isIP(host) ? [{ address: host }] : await lookup(host, { all: true });
   if (addresses.length === 0 || addresses.some((a) => isPrivateAddress(a.address))) {
-    throw new Error("Indirizzo del calendario non ammesso");
+    throw new Error("Indirizzo non ammesso: deve essere un sito pubblico");
   }
 }
 
-export async function fetchCalendar(rawUrl: string): Promise<IcalEvent[]> {
-  const cached = cache.get(rawUrl);
-  if (cached && Date.now() - cached.at < CACHE_MS) return cached.events;
-
-  let url = new URL(normalizeCalendarUrl(rawUrl));
+/**
+ * Scarica un file da un indirizzo https pubblico: i reindirizzamenti si seguono a mano,
+ * controllando ogni destinazione, e la dimensione è limitata.
+ */
+export async function fetchPublic(
+  rawUrl: string,
+  { accept, maxBytes = MAX_BYTES, what = "Il calendario" }: { accept: string; maxBytes?: number; what?: string },
+): Promise<ArrayBuffer> {
+  let url = new URL(rawUrl);
   let res: Response | null = null;
-  // I reindirizzamenti si seguono a mano, controllando ogni destinazione.
   for (let hop = 0; hop < 4; hop++) {
     await assertPublicHost(url);
-    res = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(8000), headers: { Accept: "text/calendar" } });
+    res = await fetch(url, { redirect: "manual", signal: AbortSignal.timeout(8000), headers: { Accept: accept } });
     if (res.status < 300 || res.status >= 400) break;
     const next = res.headers.get("location");
     if (!next) break;
     url = new URL(next, url);
     res = null;
   }
-  if (!res || !res.ok) throw new Error(`Il calendario non risponde${res ? ` (errore ${res.status})` : ""}`);
-  if (Number(res.headers.get("content-length") ?? 0) > MAX_BYTES) throw new Error("Calendario troppo grande");
+  if (!res || !res.ok) throw new Error(`${what} non risponde${res ? ` (errore ${res.status})` : ""}`);
+  if (Number(res.headers.get("content-length") ?? 0) > maxBytes) throw new Error(`${what}: file troppo grande`);
   const buf = await res.arrayBuffer();
-  if (buf.byteLength > MAX_BYTES) throw new Error("Calendario troppo grande");
+  if (buf.byteLength > maxBytes) throw new Error(`${what}: file troppo grande`);
+  return buf;
+}
+
+export async function fetchCalendar(rawUrl: string): Promise<IcalEvent[]> {
+  const cached = cache.get(rawUrl);
+  if (cached && Date.now() - cached.at < CACHE_MS) return cached.events;
+
+  const buf = await fetchPublic(normalizeCalendarUrl(rawUrl), { accept: "text/calendar" });
   const text = new TextDecoder().decode(buf);
   if (!text.includes("BEGIN:VCALENDAR")) throw new Error("Il link non è un calendario iCal");
 

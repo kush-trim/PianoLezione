@@ -18,6 +18,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AssistantPanel } from "@/components/AssistantPanel";
 import { ObjectiveBuilder } from "@/components/ObjectiveBuilder";
+import { PlanExercises } from "@/components/PlanExercises";
 import { PhaseTable } from "@/components/PhaseTable";
 import { TimeBar } from "@/components/TimeBar";
 import { AutoTextarea, Button, cx, EmptyState, Field, IconButton, Input, inputClass, Loading, useToast } from "@/components/ui";
@@ -51,6 +52,7 @@ function payload(p: PlanDTO) {
     allegati: p.allegati,
     allegatiAuto: p.allegatiAuto,
     sezioniExtra: p.sezioniExtra,
+    notaPost: p.notaPost,
     slotIds: p.slotIds,
     phases: p.phases,
   };
@@ -118,6 +120,8 @@ export default function PlanEditorPage() {
   const [status, setStatus] = useState<SaveStatus>("saved");
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [busy, setBusy] = useState("");
+  // La nota "dopo la lezione" dell'ultima lezione della stessa classe e materia.
+  const [previous, setPrevious] = useState<{ id: string; title: string; date: string; notaPost: string } | null>(null);
 
   // --- Caricamento ---
   useEffect(() => {
@@ -141,6 +145,16 @@ export default function PlanEditorPage() {
   }, [id, toast]);
 
   const planDate = plan?.date ?? null;
+  const firstSlot = plan?.slotIds[0] ?? null;
+  useEffect(() => {
+    if (!planDate || !firstSlot) return;
+    let stale = false;
+    api.get<typeof previous>(`/api/plans/${id}/previous`).then((p) => !stale && setPrevious(p), () => {});
+    return () => {
+      stale = true;
+    };
+  }, [id, planDate, firstSlot]);
+
   useEffect(() => {
     if (!planDate) return;
     let stale = false;
@@ -272,7 +286,7 @@ export default function PlanEditorPage() {
 
   const lessons = plan.date ? (dayLessons ?? []) : [];
   const lessonMinutes = settings?.lessonMinutes ?? 45;
-  const allegatiAuto = computeAllegati(plan.phases);
+  const allegatiAuto = computeAllegati(plan.phases, plan.exercises);
 
   function setDate(date: string | null) {
     // Cambiando giorno della settimana le lezioni collegate non valgono più.
@@ -508,6 +522,19 @@ export default function PlanEditorPage() {
         </section>
       )}
 
+      {previous && plan.date && plan.slotIds.length > 0 && (
+        <aside className="mb-5 rounded-xl border border-warn/30 bg-warn-soft px-4 py-3">
+          <p className="text-[13px] font-semibold text-warn">
+            Dalla lezione del {humanDate(previous.date, { weekday: true, year: false })}
+            {" · "}
+            <Link href={`/piani/${previous.id}`} className="font-medium underline-offset-2 hover:underline">
+              {previous.title || "Senza titolo"}
+            </Link>
+          </p>
+          <p className="mt-1 whitespace-pre-line">{previous.notaPost}</p>
+        </aside>
+      )}
+
       <div className="space-y-5">
         <TextSection label="Prerequisiti degli allievi" value={plan.prerequisiti} onChange={(v) => update({ prerequisiti: v })} />
         <ObjectiveBuilder
@@ -590,6 +617,13 @@ export default function PlanEditorPage() {
           )}
         </section>
 
+        <PlanExercises
+          planId={plan.id}
+          exercises={plan.exercises}
+          // I collegamenti si salvano subito con le loro API: qui si aggiorna solo la vista.
+          onChange={(exercises) => setPlan((p) => (p ? { ...p, exercises } : p))}
+        />
+
         {/* Sezioni personalizzate */}
         {plan.sezioniExtra.map((sez) => {
           const patch = (p: Partial<typeof sez>) =>
@@ -630,6 +664,18 @@ export default function PlanEditorPage() {
         >
           <Plus className="size-4" /> Aggiungi sezione
         </Button>
+
+        {!plan.isTemplate && (
+          <div className="rounded-xl border border-line bg-surface p-4">
+            <TextSection
+              label="Dopo la lezione"
+              hint="Com'è andata, cosa non è stato fatto, cosa riprendere. Comparirà in cima al piano della prossima lezione di questa classe. Non finisce nel PDF."
+              value={plan.notaPost}
+              onChange={(v) => update({ notaPost: v })}
+              placeholder="es. fase 3 non conclusa: riprendere gli esercizi 4–6"
+            />
+          </div>
+        )}
       </div>
 
       <AssistantPanel

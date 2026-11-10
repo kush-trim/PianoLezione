@@ -6,7 +6,7 @@ import { forgetCalendar } from "@/lib/ical";
 import { ensureSettings, readCalendars, toSettingsDTO } from "@/lib/settings";
 
 export const DELETE = route<{ id: string }>(async (_req, { id }) => {
-  const user = await requireUser();
+  const user = await requireUser({ sessionOnly: true });
   const settings = await ensureSettings(user.id);
   const calendars = readCalendars(settings);
   const removed = calendars.find((c) => c.id === id);

@@ -75,7 +75,7 @@ function PianoLezionePdf({ plan }: { plan: PlanDTO }) {
     planIntervals(plan),
     plan.phases.map((p) => p.durationMin),
   );
-  const allegati = plan.allegatiAuto ? computeAllegati(plan.phases) : plan.allegati;
+  const allegati = plan.allegatiAuto ? computeAllegati(plan.phases, plan.exercises ?? []) : plan.allegati;
   const title = plan.title.trim()
     ? `Alcuni aspetti del piano lezione (${plan.title.trim()})`
     : "Alcuni aspetti del piano lezione";

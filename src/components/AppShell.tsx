@@ -1,18 +1,19 @@
 "use client";
 
-import { CalendarDays, FolderTree, History, LayoutTemplate, LogOut, Settings } from "lucide-react";
+import { CalendarDays, FolderTree, LayoutTemplate, LogOut, Paperclip, Search, Settings } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Suspense, useEffect, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { api } from "@/lib/api";
 import type { UserDTO } from "@/lib/types";
-import { cx, ToastProvider } from "./ui";
+import { CommandPalette } from "./CommandPalette";
+import { cx, modLabel, ToastProvider } from "./ui";
 
 const NAV = [
   { href: "/settimana", label: "Settimana", icon: CalendarDays },
   { href: "/cartelle", label: "Cartelle", icon: FolderTree },
+  { href: "/esercizi", label: "Esercizi", icon: Paperclip },
   { href: "/modelli", label: "Modelli", icon: LayoutTemplate },
-  { href: "/storico", label: "Storico", icon: History },
   { href: "/impostazioni", label: "Impostazioni", icon: Settings },
 ];
 
@@ -77,6 +78,28 @@ function UserBox() {
   );
 }
 
+/** Apre la ricerca rapida: stessa cosa di ⌘K / Ctrl+K. */
+function SearchButton() {
+  // La scorciatoia dipende dal sistema: sul server non si scrive.
+  const hint = useSyncExternalStore(
+    () => () => {},
+    () => `${modLabel()}K`,
+    () => "",
+  );
+  return (
+    <button
+      type="button"
+      onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, ctrlKey: true }))}
+      className="flex items-center gap-2.5 rounded-md px-2.5 py-2 font-medium text-muted hover:bg-sunken hover:text-ink md:mt-2 md:border md:border-line"
+      aria-label="Cerca"
+    >
+      <Search className="size-4 shrink-0" aria-hidden />
+      <span className="flex-1 text-left max-md:sr-only">Cerca</span>
+      <kbd className="text-xs max-md:hidden">{hint}</kbd>
+    </button>
+  );
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   return (
     <ToastProvider>
@@ -88,6 +111,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Suspense fallback={<NavLinks pathname={null} />}>
             <ActiveNav />
           </Suspense>
+          <SearchButton />
           <div className="md:mt-auto">
             <UserBox />
           </div>
@@ -95,6 +119,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <main className="min-w-0 flex-1 px-4 py-5 md:px-8 md:py-7">
           <Suspense>{children}</Suspense>
         </main>
+        <CommandPalette />
       </div>
     </ToastProvider>
   );

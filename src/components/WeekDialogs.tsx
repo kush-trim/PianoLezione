@@ -157,7 +157,7 @@ function FormFooter({ onCancel, saving, left, submitLabel = "Salva" }: { onCance
   );
 }
 
-function EventFields({ draft, set }: { draft: EventDraft; set: (d: EventDraft) => void }) {
+function EventFields({ draft, set, classes }: { draft: EventDraft; set: (d: EventDraft) => void; classes: string[] }) {
   const allDay = !draft.startTime;
   return (
     <>
@@ -194,6 +194,33 @@ function EventFields({ draft, set }: { draft: EventDraft; set: (d: EventDraft) =
           </Field>
         </div>
       )}
+      <Field label="Classe" hint="Vuoto = tutte le classi">
+        <Input
+          value={draft.className}
+          onChange={(e) => set({ ...draft, className: e.target.value })}
+          list="event-classes"
+          placeholder="es. 3A"
+        />
+        <datalist id="event-classes">
+          {classes.map((c) => (
+            <option key={c} value={c} />
+          ))}
+        </datalist>
+      </Field>
+      <label className="flex items-start gap-2 rounded-lg bg-sunken px-3 py-2 text-[13px]">
+        <input
+          type="checkbox"
+          className="mt-0.5 size-4 accent-[var(--accent)]"
+          checked={draft.cancelsLessons}
+          onChange={(e) => set({ ...draft, cancelsLessons: e.target.checked })}
+        />
+        <span>
+          Le lezioni {draft.className.trim() ? `della ${draft.className.trim()}` : "di tutte le classi"} non si tengono
+          <span className="block text-muted">
+            {allDay ? "Per tutto il giorno" : "Solo quelle negli orari dell'evento"}: spariscono dalla settimana e non contano tra le lezioni rimaste.
+          </span>
+        </span>
+      </label>
       <Field label="Nota">
         <Input value={draft.note} onChange={(e) => set({ ...draft, note: e.target.value })} />
       </Field>
@@ -209,6 +236,7 @@ function EventFields({ draft, set }: { draft: EventDraft; set: (d: EventDraft) =
 
 export function AddDialog({
   at,
+  classes,
   monday,
   settings,
   lastSlot,
@@ -216,6 +244,7 @@ export function AddDialog({
   onDone,
 }: {
   at: { date: string; time: string } | null;
+  classes: string[];
   monday: string;
   settings: LessonSettings;
   lastSlot?: SlotDTO;
@@ -224,13 +253,14 @@ export function AddDialog({
 }) {
   return (
     <Dialog open={!!at} onClose={onClose} title="Aggiungi">
-      {at && <AddForm key={at.date + at.time} at={at} monday={monday} settings={settings} lastSlot={lastSlot} onClose={onClose} onDone={onDone} />}
+      {at && <AddForm key={at.date + at.time} at={at} classes={classes} monday={monday} settings={settings} lastSlot={lastSlot} onClose={onClose} onDone={onDone} />}
     </Dialog>
   );
 }
 
 function AddForm({
   at,
+  classes,
   monday,
   settings,
   lastSlot,
@@ -238,6 +268,7 @@ function AddForm({
   onDone,
 }: {
   at: { date: string; time: string };
+  classes: string[];
   monday: string;
   settings: LessonSettings;
   lastSlot?: SlotDTO;
@@ -257,6 +288,7 @@ function AddForm({
   });
   const [event, setEvent] = useState<EventDraft>({
     title: "", date: at.date, startTime: null, endTime: null, kind: "gita", color: "amber", note: "",
+    className: "", cancelsLessons: false,
   });
   const [past, setPast] = useState(false);
   const [error, setError] = useState("");
@@ -291,7 +323,7 @@ function AddForm({
           </label>
         </>
       ) : (
-        <EventFields draft={event} set={setEvent} />
+        <EventFields draft={event} set={setEvent} classes={classes} />
       )}
       <ErrorNote>{error}</ErrorNote>
       <FormFooter onCancel={onClose} saving={saving} submitLabel="Aggiungi" />
@@ -301,15 +333,25 @@ function AddForm({
 
 // --- Evento esistente ---
 
-export function EventDialog({ event, onClose, onDone }: { event: EventDTO | null; onClose: () => void; onDone: () => void }) {
+export function EventDialog({
+  event,
+  classes,
+  onClose,
+  onDone,
+}: {
+  event: EventDTO | null;
+  classes: string[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
   return (
     <Dialog open={!!event} onClose={onClose} title="Evento">
-      {event && <EventForm key={event.id} event={event} onClose={onClose} onDone={onDone} />}
+      {event && <EventForm key={event.id} event={event} classes={classes} onClose={onClose} onDone={onDone} />}
     </Dialog>
   );
 }
 
-function EventForm({ event, onClose, onDone }: { event: EventDTO; onClose: () => void; onDone: () => void }) {
+function EventForm({ event, classes, onClose, onDone }: { event: EventDTO; classes: string[]; onClose: () => void; onDone: () => void }) {
   const { id, ...initial } = event;
   const [draft, setDraft] = useState<EventDraft>(initial);
   const [error, setError] = useState("");
@@ -335,7 +377,7 @@ function EventForm({ event, onClose, onDone }: { event: EventDTO; onClose: () =>
       }}
       className="space-y-4"
     >
-      <EventFields draft={draft} set={setDraft} />
+      <EventFields draft={draft} set={setDraft} classes={classes} />
       <ErrorNote>{error}</ErrorNote>
       <FormFooter
         onCancel={onClose}

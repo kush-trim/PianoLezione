@@ -14,17 +14,16 @@ export function splitMaterials(text: string): string[] {
     .filter(Boolean);
 }
 
-/** "Ev. Allegati" generato dai materiali della tabella, senza doppioni. */
-export function computeAllegati(phases: { materiale: string }[]): string {
+/** "Ev. Allegati" generato dai materiali della tabella e dagli esercizi collegati, senza doppioni. */
+export function computeAllegati(phases: { materiale: string }[], exercises: { title: string }[] = []): string {
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const p of phases) {
-    for (const m of splitMaterials(p.materiale)) {
-      const key = m.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(m.charAt(0).toUpperCase() + m.slice(1));
-    }
+  const items = [...phases.flatMap((p) => splitMaterials(p.materiale)), ...exercises.map((e) => e.title.trim()).filter(Boolean)];
+  for (const m of items) {
+    const key = m.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(m.charAt(0).toUpperCase() + m.slice(1));
   }
   return out.join("\n");
 }

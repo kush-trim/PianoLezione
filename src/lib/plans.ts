@@ -10,6 +10,10 @@ import type { ExceptionDTO, Obiettivo, PhaseDTO, PlanDTO, PlanSummary, SezioneEx
 const planInclude = {
   phases: { orderBy: { order: "asc" } },
   slots: { include: { slot: { include: { exceptions: true } } } },
+  exercises: {
+    include: { exercise: { select: { id: true, title: true, fileName: true, size: true } } },
+    orderBy: { createdAt: "asc" },
+  },
 } satisfies Prisma.LessonPlanInclude;
 
 type PlanRow = Prisma.LessonPlanGetPayload<{ include: typeof planInclude }>;
@@ -104,6 +108,8 @@ export function toPlanDTO(p: PlanRow): PlanDTO {
     allegati: p.allegati,
     allegatiAuto: p.allegatiAuto,
     sezioniExtra: parseArray<SezioneExtra>(p.sezioniExtra),
+    notaPost: p.notaPost,
+    exercises: p.exercises.map((e) => e.exercise),
     isTemplate: p.isTemplate,
     slotIds: slots.map((s) => s.id),
     slots,
@@ -282,6 +288,8 @@ export async function clonePlan(
       sezioniExtra: JSON.stringify(source.sezioniExtra),
       phases: { create: phaseRows(source.phases, false) },
       slots: { create: (overrides.slotIds ?? []).map((slotId) => ({ slotId })) },
+      // La copia usa gli stessi esercizi (gli stessi PDF, non un duplicato).
+      exercises: { create: source.exercises.map((e) => ({ exerciseId: e.id })) },
     },
   });
   return getPlan(userId, created.id);

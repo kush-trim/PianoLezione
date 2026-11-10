@@ -10,7 +10,7 @@ import { calendarSchema } from "@/lib/validation";
 // Aggiunge un calendario esterno. Il link viene provato subito, così un indirizzo
 // sbagliato si scopre qui e non più tardi nella vista della settimana.
 export const POST = route(async (req) => {
-  const user = await requireUser();
+  const user = await requireUser({ sessionOnly: true });
   const data = calendarSchema.parse(await readJson(req));
   const settings = await ensureSettings(user.id);
   const calendars = readCalendars(settings);

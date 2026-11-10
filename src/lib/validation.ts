@@ -77,6 +77,7 @@ export const planUpdateSchema = z.object({
     .array(z.object({ id: z.string().max(64), titolo: short, testo: text }))
     .max(30)
     .optional(),
+  notaPost: text.optional(),
   slotIds: z.array(z.string()).max(12).optional(),
   phases: z.array(phaseSchema).max(100).optional(),
 });
@@ -149,6 +150,8 @@ export const eventSchema = z
     kind: z.enum(["gita", "altro"]).default("altro"),
     color: color.default("amber"),
     note: z.string().trim().max(500).default(""),
+    className: short.default(""),
+    cancelsLessons: z.boolean().default(false),
   })
   .refine((e) => !e.startTime || !e.endTime || e.endTime > e.startTime, "la fine deve essere dopo l'inizio");
 
@@ -162,4 +165,58 @@ export const chatSchema = z.object({
     .array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().max(20_000) }))
     .min(1)
     .max(40),
+});
+
+// --- Token API ---
+
+export const tokenCreateSchema = z.object({
+  name: short.min(1, "dai un nome al token"),
+  scope: z.enum(["read", "write", "feed"]),
+  expiresInDays: z.number().int().min(1).max(3650).nullable().optional(),
+});
+
+// --- Cartelle: incolla (copia o sposta) ---
+
+export const pasteSchema = z.object({
+  op: z.enum(["copy", "cut"]),
+  planIds: z.array(z.string()).max(500).default([]),
+  folderIds: z.array(z.string()).max(200).default([]),
+  targetFolderId: z.string().nullable(),
+});
+
+// Ripristino di un piano eliminato (annulla): il piano com'era, senza id.
+export const planRestoreSchema = planUpdateSchema.extend({
+  title: short,
+  isTemplate: z.boolean().default(false),
+  exerciseIds: z.array(z.string()).max(200).optional(),
+});
+
+// --- Nuovo anno: in quale settimana fare i piani copiati ---
+
+export const proposeSchema = z.object({
+  targetFolderId: z.string(),
+  // planId = il piano nella cartella dell'anno; sourceId = il piano da cui è stato copiato.
+  plans: z
+    .array(z.object({ planId: z.string(), sourceId: z.string().optional() }))
+    .min(1)
+    .max(500),
+});
+
+// --- Calendario scolastico da PDF ---
+
+export const calendarImportSchema = z.object({
+  url: z.string().trim().url().max(2000).optional(),
+  text: z.string().max(200_000).optional(),
+});
+
+export const calendarApplySchema = z.object({
+  year: z.object({ name: short.min(1), startDate: date, endDate: date }),
+  holidays: z.array(z.object({ name: short.min(1), startDate: date, endDate: date })).max(100),
+});
+
+// --- Esercizi ---
+
+export const exerciseUpdateSchema = z.object({
+  title: short.min(1).optional(),
+  note: z.string().trim().max(2000).optional(),
 });

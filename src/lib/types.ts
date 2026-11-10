@@ -47,6 +47,9 @@ export type PlanDTO = {
   allegati: string;
   allegatiAuto: boolean;
   sezioniExtra: SezioneExtra[];
+  notaPost: string;
+  /** Esercizi (PDF) collegati al piano. */
+  exercises: ExerciseRef[];
   isTemplate: boolean;
   slotIds: string[];
   slots: SlotDTO[];
@@ -74,6 +77,8 @@ export type FolderDTO = {
   color: string;
   order: number;
   planCount: number;
+  /** Cartella di un anno scolastico: i piani copiati dentro vengono riportati in quell'anno. */
+  schoolYearId: string | null;
 };
 
 export type PhaseTemplateDTO = {
@@ -125,6 +130,10 @@ export type EventDTO = {
   kind: "gita" | "altro";
   color: string;
   note: string;
+  /** Classe coinvolta ("" = tutte). */
+  className: string;
+  /** Le lezioni della classe quel giorno (o in quegli orari) non si tengono. */
+  cancelsLessons: boolean;
 };
 
 /** Evento letto da un calendario esterno (iCal), già riportato al singolo giorno. */
@@ -167,4 +176,83 @@ export type WeekDTO = {
   settings: { lessonMinutes: number; defaultHours: number };
   /** Calendari esterni che non è stato possibile leggere. */
   calendarErrors: string[];
+};
+
+export type ApiTokenDTO = {
+  id: string;
+  name: string;
+  prefix: string;
+  scope: "read" | "write" | "feed";
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+};
+
+/** Le lezioni rimaste fino alla fine dell'anno, per classe e materia. */
+export type ClassRemaining = {
+  className: string;
+  subject: string;
+  color: string;
+  /** Lezioni (ore dell'orario) da oggi alla fine dell'anno, senza vacanze e annullamenti. */
+  remaining: number;
+  remainingMin: number;
+  /** Di quelle rimaste, quante hanno già un piano. */
+  planned: number;
+  /** Lezioni già svolte dall'inizio dell'anno. */
+  done: number;
+  /** Giorni con almeno una lezione di questa classe e materia. */
+  daysLeft: number;
+  nextDate: string | null;
+};
+
+export type RemainingDTO = {
+  year: SchoolYearDTO | null;
+  from: string;
+  schoolDaysLeft: number;
+  weeksLeft: number;
+  classes: ClassRemaining[];
+};
+
+/** Una lezione di una settimana del nuovo anno, come possibile destinazione di un piano. */
+export type LessonOption = {
+  date: string;
+  slotIds: string[];
+  startTime: string;
+  endTime: string;
+  subject: string;
+  className: string;
+  /** C'è già un piano su questa lezione. */
+  taken: boolean;
+};
+
+export type ProposalDTO = {
+  year: SchoolYearDTO;
+  weeks: { monday: string; number: number; lessons: LessonOption[] }[];
+  plans: {
+    planId: string;
+    title: string;
+    /** Data e settimana nell'anno di provenienza. */
+    sourceDate: string | null;
+    sourceWeek: number | null;
+    /** Proposta: settimana (lunedì), data e lezioni. */
+    monday: string | null;
+    date: string | null;
+    slotIds: string[];
+  }[];
+};
+
+export type CalendarImportDTO = {
+  year: { name: string; startDate: string; endDate: string } | null;
+  holidays: { name: string; startDate: string; endDate: string }[];
+  /** Righe del documento che sembrano date ma non sono state capite. */
+  warnings: string[];
+};
+
+export type ExerciseRef = { id: string; title: string; fileName: string; size: number };
+
+export type ExerciseDTO = ExerciseRef & {
+  note: string;
+  createdAt: string;
+  /** I piani a cui è collegato (anche nessuno). */
+  plans: { id: string; title: string; date: string | null }[];
 };

@@ -32,7 +32,7 @@ export function YearStrip({
 
   if (!data.year) {
     return (
-      <p className="mb-4 rounded-xl border border-dashed border-line-strong px-4 py-3 text-muted">
+      <p className="mb-3 rounded-xl border border-dashed border-line-strong px-4 py-3 text-muted">
         Nessun anno scolastico definito.{" "}
         <Link href="/impostazioni" className="font-medium text-accent hover:underline">
           Impostalo
@@ -44,7 +44,7 @@ export function YearStrip({
 
   const thisWeek = mondayOf(today());
   return (
-    <nav aria-label={`Settimane dell'anno scolastico ${data.year.name}`} className="mb-4 rounded-xl border border-line bg-surface">
+    <nav aria-label={`Settimane dell'anno scolastico ${data.year.name}`} className="mb-3 shrink-0 rounded-xl border border-line bg-surface">
       <div className="flex items-end gap-0.5 overflow-x-auto px-2 pt-1.5 pb-2">
         <span className="sticky left-0 z-10 mr-1 shrink-0 self-stretch bg-surface pr-2 pt-4 text-[13px] font-semibold">
           {data.year.name}
