@@ -121,13 +121,13 @@ function PhaseRow({
             <p
               className={cx(
                 "tabular mt-1 pl-1.5 font-mono text-xs",
-                timing.overflow ? "font-semibold text-danger" : timing.crossesBreak ? "text-warn" : "text-accent",
+                timing.overflow || timing.crossesBreak ? "text-warn" : "text-accent",
               )}
             >
               {hasClock
                 ? `${fromMin(timing.start)}–${fromMin(timing.end)}`
                 : `min ${timing.start}–${timing.end}`}
-              {timing.overflow && <span className="block font-sans">oltre la fine</span>}
+              {timing.overflow && <span className="block font-sans">oltre la durata prevista</span>}
               {timing.crossesBreak && <span className="block font-sans">a cavallo della pausa</span>}
             </p>
           )}

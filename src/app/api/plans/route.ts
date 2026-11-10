@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { readJson, route } from "@/lib/http";
 import { assertOwned, clonePlan, getPlan, listPlans } from "@/lib/plans";
+import { ensureSettings } from "@/lib/settings";
 import { planCreateSchema } from "@/lib/validation";
 
 // GET /api/plans?folderId=<id|none>&q=<testo>&templates=1&limit=<n>
@@ -39,12 +40,19 @@ export const POST = route(async (req) => {
     });
   }
 
+  // Senza una lezione dell'orario il piano parte con la durata predefinita delle Impostazioni.
+  const settings = await ensureSettings(user.id);
+  const declared =
+    data.manualDuration ?? (data.slotIds?.length ? null : settings.defaultHours * settings.lessonMinutes);
+
   const plan = await db.lessonPlan.create({
     data: {
       userId: user.id,
       title: data.title ?? "",
       date: data.date ?? null,
       folderId: data.folderId ?? null,
+      manualStart: data.manualStart ?? null,
+      manualDuration: declared,
       slots: { create: (data.slotIds ?? []).map((slotId) => ({ slotId })) },
     },
   });

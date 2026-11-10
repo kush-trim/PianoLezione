@@ -1,7 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { notFound, readJson, route } from "@/lib/http";
-import { assertOwned, getPlan, phaseRows, snapshotPlan } from "@/lib/plans";
+import { assertOwned, getPlan, objectiveFields, phaseRows, snapshotPlan } from "@/lib/plans";
 import { planUpdateSchema } from "@/lib/validation";
 
 type P = { id: string };
@@ -20,12 +20,27 @@ export const PUT = route<P>(async (req, { id }) => {
   // Lo stato precedente finisce nello storico (al massimo ogni 5 minuti).
   await snapshotPlan(before);
 
-  const { phases, slotIds, sezioniExtra, ...fields } = data;
+  const {
+    phases,
+    slotIds,
+    sezioniExtra,
+    obiettivoInsegnamento,
+    obiettivoApprendimento,
+    obiettiviInsegnamento,
+    obiettiviApprendimento,
+    ...fields
+  } = data;
   await db.$transaction(async (tx) => {
     await tx.lessonPlan.update({
       where: { id },
       data: {
         ...fields,
+        ...objectiveFields({
+          obiettivoInsegnamento,
+          obiettivoApprendimento,
+          obiettiviInsegnamento,
+          obiettiviApprendimento,
+        }),
         ...(sezioniExtra ? { sezioniExtra: JSON.stringify(sezioniExtra) } : {}),
       },
     });

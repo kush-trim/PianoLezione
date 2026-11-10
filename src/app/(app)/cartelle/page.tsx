@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, Copy, FileText, Folder, FolderPlus, Inbox, Layers, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { ChevronRight, Copy, FileText, Folder, FolderPlus, Inbox, Layers, Pencil, Plus, Search, Trash2, Wand2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type DragEvent, type FormEvent } from "react";
@@ -224,7 +224,7 @@ export default function CartellePage() {
             <Button onClick={() => setDraft({ name: "", color: "teal", parentId: current?.id ?? null })}>
               <FolderPlus className="size-4" /> Nuova cartella
             </Button>
-            <Button variant="primary" onClick={() => (templates.length ? setNewOpen(true) : createPlan())}>
+            <Button variant="primary" onClick={() => setNewOpen(true)}>
               <Plus className="size-4" /> Nuovo piano
             </Button>
           </>
@@ -383,6 +383,16 @@ export default function CartellePage() {
             <button type="button" onClick={() => createPlan()} className="flex w-full items-center gap-3 rounded-lg border border-line-strong px-3 py-2.5 text-left hover:border-accent">
               <Plus className="size-4 text-accent" />
               <span className="font-medium">Piano vuoto</span>
+            </button>
+          </li>
+          <li>
+            <button
+              type="button"
+              onClick={() => router.push(`/piani/nuovo${current ? `?folderId=${current.id}` : ""}`)}
+              className="flex w-full items-center gap-3 rounded-lg border border-accent bg-accent-soft px-3 py-2.5 text-left"
+            >
+              <Wand2 className="size-4 text-accent" />
+              <span className="font-medium">Creazione guidata</span>
             </button>
           </li>
           {templates.map((t) => (

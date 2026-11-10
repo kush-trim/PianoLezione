@@ -4,16 +4,17 @@ import type { Prisma } from "@/generated/prisma/client";
 import { db } from "./db";
 import { ApiError, notFound } from "./http";
 import { toMin } from "./schedule";
-import type { PhaseDTO, PlanDTO, PlanSummary, SezioneExtra, SlotDTO } from "./types";
+import { objectivesText } from "./plan-utils";
+import type { ExceptionDTO, Obiettivo, PhaseDTO, PlanDTO, PlanSummary, SezioneExtra, SlotDTO } from "./types";
 
 const planInclude = {
   phases: { orderBy: { order: "asc" } },
-  slots: { include: { slot: true } },
+  slots: { include: { slot: { include: { exceptions: true } } } },
 } satisfies Prisma.LessonPlanInclude;
 
 type PlanRow = Prisma.LessonPlanGetPayload<{ include: typeof planInclude }>;
 
-function parseSezioni(json: string): SezioneExtra[] {
+function parseArray<T>(json: string): T[] {
   try {
     const v = JSON.parse(json);
     return Array.isArray(v) ? v : [];
@@ -31,6 +32,8 @@ export function toSlotDTO(s: {
   className: string;
   room: string;
   color: string;
+  validFrom: string | null;
+  validTo: string | null;
 }): SlotDTO {
   return {
     id: s.id,
@@ -41,12 +44,48 @@ export function toSlotDTO(s: {
     className: s.className,
     room: s.room,
     color: s.color,
+    validFrom: s.validFrom,
+    validTo: s.validTo,
+  };
+}
+
+export function toExceptionDTO(e: {
+  id: string;
+  slotId: string;
+  date: string;
+  kind: string;
+  startTime: string | null;
+  endTime: string | null;
+  room: string | null;
+  note: string;
+}): ExceptionDTO {
+  return {
+    id: e.id,
+    slotId: e.slotId,
+    date: e.date,
+    kind: e.kind === "annullata" ? "annullata" : "modificata",
+    startTime: e.startTime,
+    endTime: e.endTime,
+    room: e.room,
+    note: e.note,
   };
 }
 
 export function toPlanDTO(p: PlanRow): PlanDTO {
+  // Gli orari sono quelli effettivi del giorno del piano: se la lezione è stata
+  // spostata solo per quella data, valgono gli orari modificati.
   const slots = p.slots
-    .map((ps) => toSlotDTO(ps.slot))
+    .map((ps) => {
+      const dto = toSlotDTO(ps.slot);
+      const ex = ps.slot.exceptions.find((e) => e.date === p.date && e.kind === "modificata");
+      if (!ex) return dto;
+      return {
+        ...dto,
+        startTime: ex.startTime ?? dto.startTime,
+        endTime: ex.endTime ?? dto.endTime,
+        room: ex.room ?? dto.room,
+      };
+    })
     .sort((a, b) => toMin(a.startTime) - toMin(b.startTime));
   return {
     id: p.id,
@@ -59,10 +98,12 @@ export function toPlanDTO(p: PlanRow): PlanDTO {
     obiettivoInsegnamento: p.obiettivoInsegnamento,
     traguardo: p.traguardo,
     obiettivoApprendimento: p.obiettivoApprendimento,
+    obiettiviInsegnamento: parseArray<Obiettivo>(p.obiettiviInsJson),
+    obiettiviApprendimento: parseArray<Obiettivo>(p.obiettiviAppJson),
     verifica: p.verifica,
     allegati: p.allegati,
     allegatiAuto: p.allegatiAuto,
-    sezioniExtra: parseSezioni(p.sezioniExtra),
+    sezioniExtra: parseArray<SezioneExtra>(p.sezioniExtra),
     isTemplate: p.isTemplate,
     slotIds: slots.map((s) => s.id),
     slots,
@@ -144,6 +185,8 @@ export type Snapshot = Pick<
   | "obiettivoInsegnamento"
   | "traguardo"
   | "obiettivoApprendimento"
+  | "obiettiviInsegnamento"
+  | "obiettiviApprendimento"
   | "verifica"
   | "allegati"
   | "allegatiAuto"
@@ -158,6 +201,8 @@ export function toSnapshot(p: PlanDTO): Snapshot {
     obiettivoInsegnamento: p.obiettivoInsegnamento,
     traguardo: p.traguardo,
     obiettivoApprendimento: p.obiettivoApprendimento,
+    obiettiviInsegnamento: p.obiettiviInsegnamento,
+    obiettiviApprendimento: p.obiettiviApprendimento,
     verifica: p.verifica,
     allegati: p.allegati,
     allegatiAuto: p.allegatiAuto,
@@ -229,6 +274,8 @@ export async function clonePlan(
       obiettivoInsegnamento: source.obiettivoInsegnamento,
       traguardo: source.traguardo,
       obiettivoApprendimento: source.obiettivoApprendimento,
+      obiettiviInsJson: JSON.stringify(source.obiettiviInsegnamento),
+      obiettiviAppJson: JSON.stringify(source.obiettiviApprendimento),
       verifica: source.verifica,
       allegati: source.allegati,
       allegatiAuto: source.allegatiAuto,
@@ -238,4 +285,37 @@ export async function clonePlan(
     },
   });
   return getPlan(userId, created.id);
+}
+
+/**
+ * Campi del database per gli obiettivi: se ci sono obiettivi strutturati,
+ * il testo che finisce nel PDF viene generato da quelli.
+ */
+export function objectiveFields(data: {
+  obiettivoInsegnamento?: string;
+  obiettivoApprendimento?: string;
+  obiettiviInsegnamento?: Obiettivo[];
+  obiettiviApprendimento?: Obiettivo[];
+}) {
+  const out: {
+    obiettivoInsegnamento?: string;
+    obiettivoApprendimento?: string;
+    obiettiviInsJson?: string;
+    obiettiviAppJson?: string;
+  } = {};
+  if (data.obiettivoInsegnamento !== undefined) out.obiettivoInsegnamento = data.obiettivoInsegnamento;
+  if (data.obiettivoApprendimento !== undefined) out.obiettivoApprendimento = data.obiettivoApprendimento;
+  if (data.obiettiviInsegnamento) {
+    out.obiettiviInsJson = JSON.stringify(data.obiettiviInsegnamento);
+    if (data.obiettiviInsegnamento.length) {
+      out.obiettivoInsegnamento = objectivesText("insegnamento", data.obiettiviInsegnamento);
+    }
+  }
+  if (data.obiettiviApprendimento) {
+    out.obiettiviAppJson = JSON.stringify(data.obiettiviApprendimento);
+    if (data.obiettiviApprendimento.length) {
+      out.obiettivoApprendimento = objectivesText("apprendimento", data.obiettiviApprendimento);
+    }
+  }
+  return out;
 }

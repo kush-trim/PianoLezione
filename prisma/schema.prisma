@@ -19,6 +19,11 @@ model User {
   slots          TimetableSlot[]
   plans          LessonPlan[]
   phaseTemplates PhaseTemplate[]
+  settings       UserSettings?
+  verbs          Verb[]
+  schoolYears    SchoolYear[]
+  holidays       Holiday[]
+  events         Event[]
 }
 
 model Session {
@@ -52,18 +57,22 @@ model Folder {
 
 // Una lezione ricorrente dell'orario settimanale del docente.
 model TimetableSlot {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   userId    String
   weekday   Int // 1 = lunedì ... 7 = domenica
   startTime String // "HH:MM"
   endTime   String // "HH:MM"
   subject   String
-  className String @default("")
-  room      String @default("")
-  color     String @default("blue")
+  className String  @default("")
+  room      String  @default("")
+  color     String  @default("blue")
+  // Periodo di validità ("YYYY-MM-DD", estremi inclusi). Vuoto = sempre.
+  validFrom String?
+  validTo   String?
 
-  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plans PlanSlot[]
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plans      PlanSlot[]
+  exceptions LessonException[]
 
   @@index([userId])
 }
@@ -73,20 +82,24 @@ model LessonPlan {
   userId   String
   folderId String?
 
-  title String @default("")
-  date  String? // "YYYY-MM-DD"
-  // Orario manuale, usato solo se il piano non è collegato a lezioni dell'orario.
+  title          String  @default("")
+  date           String? // "YYYY-MM-DD"
+  // Senza lezioni collegate: ora di inizio (facoltativa) e durata dichiarata in minuti.
   manualStart    String?
   manualDuration Int?
 
-  prerequisiti           String @default("")
-  obiettivoInsegnamento  String @default("")
-  traguardo              String @default("")
-  obiettivoApprendimento String @default("")
-  verifica               String @default("")
-  allegati               String @default("")
+  prerequisiti           String  @default("")
+  obiettivoInsegnamento  String  @default("")
+  traguardo              String  @default("")
+  obiettivoApprendimento String  @default("")
+  verifica               String  @default("")
+  allegati               String  @default("")
   allegatiAuto           Boolean @default(true)
-  sezioniExtra           String @default("[]") // JSON: [{ id, titolo, testo }]
+  sezioniExtra           String  @default("[]") // JSON: [{ id, titolo, testo }]
+  // Obiettivi strutturati, JSON: [{ id, verbo, testo }]. Se presenti, i campi di testo
+  // obiettivoInsegnamento / obiettivoApprendimento vengono generati da qui.
+  obiettiviInsJson       String  @default("[]")
+  obiettiviAppJson       String  @default("[]")
 
   isTemplate Boolean  @default(false)
   createdAt  DateTime @default(now())
@@ -151,4 +164,87 @@ model PlanVersion {
   plan LessonPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
   @@index([planId, createdAt])
+}
+
+model UserSettings {
+  userId        String  @id
+  lessonMinutes Int     @default(45) // durata di un'ora di lezione
+  defaultHours  Int     @default(1) // ore proposte per una nuova lezione
+  aiProvider    String  @default("") // "anthropic" | "google" | "openai"
+  aiModel       String  @default("")
+  aiKeysEnc     String  @default("") // JSON cifrato: { anthropic?, google?, openai? }
+  calendarsEnc  String  @default("") // JSON cifrato: [{ id, name, url, asHolidays }]
+  seeded        Boolean @default(false) // verbi e anno scolastico iniziali già creati
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Verbi consentiti per scrivere gli obiettivi.
+model Verb {
+  id     String @id @default(cuid())
+  userId String
+  kind   String // "insegnamento" | "apprendimento"
+  text   String
+  order  Int    @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, kind])
+}
+
+model SchoolYear {
+  id        String @id @default(cuid())
+  userId    String
+  name      String
+  startDate String // "YYYY-MM-DD"
+  endDate   String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Holiday {
+  id        String @id @default(cuid())
+  userId    String
+  name      String
+  startDate String
+  endDate   String // incluso
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Modifica di una lezione ricorrente valida per un solo giorno.
+model LessonException {
+  id        String  @id @default(cuid())
+  slotId    String
+  date      String // "YYYY-MM-DD"
+  kind      String // "annullata" | "modificata"
+  startTime String?
+  endTime   String?
+  room      String?
+  note      String  @default("")
+
+  slot TimetableSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+
+  @@unique([slotId, date])
+}
+
+// Evento di un singolo giorno (gita, giornata speciale...).
+model Event {
+  id        String  @id @default(cuid())
+  userId    String
+  title     String
+  date      String
+  startTime String? // senza orari = giornata intera
+  endTime   String?
+  kind      String  @default("altro") // "gita" | "altro"
+  color     String  @default("amber")
+  note      String  @default("")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
 }

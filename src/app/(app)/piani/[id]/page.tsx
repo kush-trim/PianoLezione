@@ -9,12 +9,15 @@ import {
   LayoutTemplate,
   Loader2,
   Plus,
+  Sparkles,
   Trash2,
   TriangleAlert,
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AssistantPanel } from "@/components/AssistantPanel";
+import { ObjectiveBuilder } from "@/components/ObjectiveBuilder";
 import { PhaseTable } from "@/components/PhaseTable";
 import { TimeBar } from "@/components/TimeBar";
 import { AutoTextarea, Button, cx, EmptyState, Field, IconButton, Input, inputClass, Loading, useToast } from "@/components/ui";
@@ -22,9 +25,9 @@ import { VersionsDialog } from "@/components/VersionsDialog";
 import { api, errorMessage, HttpError } from "@/lib/api";
 import { swatch } from "@/lib/colors";
 import { buildTree, flattenTree } from "@/lib/folders";
-import { computeAllegati, humanDate, weekdayOf, WEEKDAYS } from "@/lib/plan-utils";
-import { computeSchedule, planIntervals, redistribute, toMin } from "@/lib/schedule";
-import type { FolderDTO, PhaseTemplateDTO, PlanDTO, SlotDTO } from "@/lib/types";
+import { computeAllegati, humanDate, objectivesText, weekdayOf, WEEKDAYS } from "@/lib/plan-utils";
+import { computeSchedule, planIntervals, redistribute } from "@/lib/schedule";
+import type { FolderDTO, Occurrence, PhaseTemplateDTO, PlanDTO, SettingsDTO, VerbDTO } from "@/lib/types";
 
 type SaveStatus = "saved" | "dirty" | "saving" | "error";
 
@@ -42,6 +45,8 @@ function payload(p: PlanDTO) {
     obiettivoInsegnamento: p.obiettivoInsegnamento,
     traguardo: p.traguardo,
     obiettivoApprendimento: p.obiettivoApprendimento,
+    obiettiviInsegnamento: p.obiettiviInsegnamento,
+    obiettiviApprendimento: p.obiettiviApprendimento,
     verifica: p.verifica,
     allegati: p.allegati,
     allegatiAuto: p.allegatiAuto,
@@ -102,7 +107,11 @@ export default function PlanEditorPage() {
 
   const [plan, setPlan] = useState<PlanDTO | null>(null);
   const [missing, setMissing] = useState(false);
-  const [allSlots, setAllSlots] = useState<SlotDTO[] | null>(null);
+  // Le lezioni del giorno del piano, con le modifiche valide solo per quel giorno.
+  const [dayLessons, setDayLessons] = useState<Occurrence[] | null>(null);
+  const [verbs, setVerbs] = useState<VerbDTO[]>([]);
+  const [settings, setSettings] = useState<SettingsDTO | null>(null);
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const [folders, setFolders] = useState<FolderDTO[]>([]);
   const [templates, setTemplates] = useState<PhaseTemplateDTO[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -121,7 +130,8 @@ export default function PlanEditorPage() {
         else toast(errorMessage(e), "error");
       },
     );
-    api.get<SlotDTO[]>("/api/timetable").then((s) => !stale && setAllSlots(s), () => {});
+    api.get<VerbDTO[]>("/api/verbs").then((v) => !stale && setVerbs(v), () => {});
+    api.get<SettingsDTO>("/api/settings").then((s) => !stale && setSettings(s), () => {});
     api.get<FolderDTO[]>("/api/folders").then((f) => !stale && setFolders(f), () => {});
     api.get<PhaseTemplateDTO[]>("/api/phase-templates").then((t) => !stale && setTemplates(t), () => {});
     api.get<string[]>("/api/materials").then((m) => !stale && setSuggestions(m), () => {});
@@ -129,6 +139,16 @@ export default function PlanEditorPage() {
       stale = true;
     };
   }, [id, toast]);
+
+  const planDate = plan?.date ?? null;
+  useEffect(() => {
+    if (!planDate) return;
+    let stale = false;
+    api.get<Occurrence[]>(`/api/timetable?date=${planDate}`).then((o) => !stale && setDayLessons(o), () => {});
+    return () => {
+      stale = true;
+    };
+  }, [planDate]);
 
   // --- Salvataggio automatico ---
   const planRef = useRef<PlanDTO | null>(null);
@@ -215,17 +235,19 @@ export default function PlanEditorPage() {
   // --- Dati derivati ---
   const slots = useMemo(() => {
     if (!plan) return [];
-    const source = allSlots ?? plan.slots;
-    return source
-      .filter((s) => plan.slotIds.includes(s.id))
-      .sort((a, b) => toMin(a.startTime) - toMin(b.startTime));
-  }, [plan, allSlots]);
+    // Finché le lezioni del giorno non sono caricate valgono quelle arrivate con il piano.
+    if (!dayLessons || !plan.date) return plan.slots;
+    return dayLessons
+      .filter((o) => plan.slotIds.includes(o.slot.id))
+      .map((o) => ({ ...o.slot, startTime: o.startTime, endTime: o.endTime }));
+  }, [plan, dayLessons]);
 
   const schedule = useMemo(
     () =>
       computeSchedule(
         planIntervals({ slots, manualStart: plan?.manualStart ?? null, manualDuration: plan?.manualDuration ?? null }),
         (plan?.phases ?? []).map((p) => p.durationMin),
+        plan?.manualDuration ?? null,
       ),
     [plan, slots],
   );
@@ -248,13 +270,15 @@ export default function PlanEditorPage() {
   }
   if (!plan) return <Loading />;
 
-  const daySlots = plan.date && allSlots ? allSlots.filter((s) => s.weekday === weekdayOf(plan.date!)) : [];
+  const lessons = plan.date ? (dayLessons ?? []) : [];
+  const lessonMinutes = settings?.lessonMinutes ?? 45;
   const allegatiAuto = computeAllegati(plan.phases);
 
   function setDate(date: string | null) {
     // Cambiando giorno della settimana le lezioni collegate non valgono più.
-    const keep = date && allSlots ? allSlots.filter((s) => s.weekday === weekdayOf(date)).map((s) => s.id) : [];
-    update({ date, slotIds: plan!.slotIds.filter((sid) => keep.includes(sid)) });
+    const sameWeekday = !!date && !!plan!.date && weekdayOf(date) === weekdayOf(plan!.date);
+    setDayLessons(null);
+    update({ date, slotIds: sameWeekday ? plan!.slotIds : [] });
   }
 
   function toggleSlot(slotId: string) {
@@ -321,6 +345,9 @@ export default function PlanEditorPage() {
         </IconButton>
         <SaveBadge status={status} onRetry={save} />
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          <Button size="sm" variant="ghost" onClick={() => setAssistantOpen(true)}>
+            <Sparkles className="size-3.5" /> Assistente
+          </Button>
           <Button size="sm" variant="ghost" onClick={() => run("versions", async () => setVersionsOpen(true))}>
             <History className="size-3.5" /> Versioni
           </Button>
@@ -373,7 +400,9 @@ export default function PlanEditorPage() {
             <span className="mb-1 block text-[13px] font-medium">Lezione</span>
             {!plan.date ? (
               <p className="py-2 text-muted">Scegli una data per collegare il piano a una lezione del tuo orario.</p>
-            ) : daySlots.length === 0 ? (
+            ) : dayLessons === null ? (
+              <p className="py-2 text-muted">Carico le lezioni…</p>
+            ) : lessons.length === 0 ? (
               <p className="py-2 text-muted">
                 Nessuna lezione in orario di {WEEKDAYS[weekdayOf(plan.date) - 1].toLowerCase()}.{" "}
                 <Link href="/orario" className="font-medium text-accent hover:underline">
@@ -382,7 +411,8 @@ export default function PlanEditorPage() {
               </p>
             ) : (
               <div className="flex flex-wrap gap-1.5">
-                {daySlots.map((s) => {
+                {lessons.map((o) => {
+                  const s = o.slot;
                   const on = plan.slotIds.includes(s.id);
                   const c = swatch(s.color);
                   return (
@@ -405,10 +435,12 @@ export default function PlanEditorPage() {
                         {on && <Check className="size-3 text-white" />}
                       </span>
                       <span className="font-medium">
-                        {s.startTime}–{s.endTime}
+                        {o.startTime}–{o.endTime}
                       </span>
                       {s.subject}
                       {s.className && ` · ${s.className}`}
+                      {o.cancelled && " (annullata)"}
+                      {o.modified && " (spostata)"}
                     </button>
                   );
                 })}
@@ -416,10 +448,28 @@ export default function PlanEditorPage() {
             )}
             {plan.slotIds.length === 0 && (
               <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-line pt-3">
-                <Field label="Oppure: ora di inizio" className="w-36">
-                  <Input type="time" value={plan.manualStart ?? ""} onChange={(e) => update({ manualStart: e.target.value || null })} />
-                </Field>
-                <Field label="Durata (min)" className="w-28">
+                <div>
+                  <span className="mb-1 block text-[13px] font-medium">Durata prevista</span>
+                  <div className="flex h-9 items-center gap-1.5">
+                    {[1, 2].map((h) => (
+                      <button
+                        key={h}
+                        type="button"
+                        aria-pressed={plan.manualDuration === h * lessonMinutes}
+                        onClick={() => update({ manualDuration: h * lessonMinutes })}
+                        className={cx(
+                          "tabular h-9 rounded-md border px-2.5 text-[13px]",
+                          plan.manualDuration === h * lessonMinutes
+                            ? "border-accent bg-accent-soft font-medium text-accent"
+                            : "border-line-strong hover:border-accent",
+                        )}
+                      >
+                        {h === 1 ? "1 ora" : `${h} ore`} · {h * lessonMinutes}’
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <Field label="Altra durata (min)" className="w-32">
                   <Input
                     type="number"
                     min={1}
@@ -429,8 +479,11 @@ export default function PlanEditorPage() {
                       const n = Math.round(Number(e.target.value));
                       update({ manualDuration: n >= 1 && n <= 600 ? n : null });
                     }}
-                    placeholder="es. 45"
+                    placeholder="es. 60"
                   />
+                </Field>
+                <Field label="Ora di inizio (facoltativa)" className="w-44">
+                  <Input type="time" value={plan.manualStart ?? ""} onChange={(e) => update({ manualStart: e.target.value || null })} />
                 </Field>
               </div>
             )}
@@ -457,22 +510,28 @@ export default function PlanEditorPage() {
 
       <div className="space-y-5">
         <TextSection label="Prerequisiti degli allievi" value={plan.prerequisiti} onChange={(v) => update({ prerequisiti: v })} />
-        <TextSection
+        <ObjectiveBuilder
+          kind="insegnamento"
           label="Obiettivo d’insegnamento"
-          value={plan.obiettivoInsegnamento}
-          onChange={(v) => update({ obiettivoInsegnamento: v })}
-          placeholder="- Il docente…"
+          items={plan.obiettiviInsegnamento}
+          legacyText={plan.obiettivoInsegnamento}
+          verbs={verbs}
+          onChange={(items) => update({ obiettiviInsegnamento: items, obiettivoInsegnamento: objectivesText("insegnamento", items) })}
+          onClearLegacy={() => update({ obiettivoInsegnamento: "" })}
         />
         <TextSection
           label="Traguardo di apprendimento specifico al quale principalmente si riferisce la lezione"
           value={plan.traguardo}
           onChange={(v) => update({ traguardo: v })}
         />
-        <TextSection
+        <ObjectiveBuilder
+          kind="apprendimento"
           label="Obiettivo d’apprendimento (disciplinare / trasversale)"
-          value={plan.obiettivoApprendimento}
-          onChange={(v) => update({ obiettivoApprendimento: v })}
-          placeholder="- L’allievo…"
+          items={plan.obiettiviApprendimento}
+          legacyText={plan.obiettivoApprendimento}
+          verbs={verbs}
+          onChange={(items) => update({ obiettiviApprendimento: items, obiettivoApprendimento: objectivesText("apprendimento", items) })}
+          onClearLegacy={() => update({ obiettivoApprendimento: "" })}
         />
 
         <section>
@@ -572,6 +631,16 @@ export default function PlanEditorPage() {
           <Plus className="size-4" /> Aggiungi sezione
         </Button>
       </div>
+
+      <AssistantPanel
+        open={assistantOpen}
+        onClose={() => setAssistantOpen(false)}
+        plan={plan}
+        settings={settings}
+        verbs={verbs}
+        beforeSend={flush}
+        onApply={update}
+      />
 
       <VersionsDialog
         planId={versionsOpen ? plan.id : null}

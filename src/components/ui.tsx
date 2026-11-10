@@ -177,6 +177,11 @@ export function Dialog({
     if (!el) return;
     if (open && !el.open) el.showModal();
     if (!open && el.open) el.close();
+    // Next tiene montata (nascosta) la pagina da cui si esce: una finestra modale rimasta
+    // aperta bloccherebbe i clic sulla pagina nuova. Va chiusa quando la pagina si nasconde.
+    return () => {
+      if (el.open) el.close();
+    };
   }, [open]);
 
   return (

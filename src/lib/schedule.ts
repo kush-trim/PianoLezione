@@ -50,7 +50,12 @@ export function normalizeIntervals(intervals: Interval[]): Interval[] {
  * Dispone le fasi in sequenza dentro gli intervalli della lezione.
  * Le pause tra un intervallo e l'altro vengono saltate.
  */
-export function computeSchedule(rawIntervals: Interval[], durations: number[]): Schedule {
+export function computeSchedule(
+  rawIntervals: Interval[],
+  durations: number[],
+  /** Durata dichiarata, usata quando non c'è un orario di inizio. */
+  declared: number | null = null,
+): Schedule {
   const intervals = normalizeIntervals(rawIntervals);
   const total = durations.reduce((s, d) => s + Math.max(0, d), 0);
 
@@ -61,7 +66,14 @@ export function computeSchedule(rawIntervals: Interval[], durations: number[]): 
       cursor += Math.max(0, d);
       return { start, end: cursor, crossesBreak: false, overflow: false };
     });
-    return { hasClock: false, phases, total, available: null, diff: null };
+    return {
+      hasClock: false,
+      // Tempi relativi: sfora la fase che finisce oltre la durata dichiarata.
+      phases: phases.map((p) => ({ ...p, overflow: declared !== null && p.end > declared })),
+      total,
+      available: declared,
+      diff: declared === null ? null : declared - total,
+    };
   }
 
   const openEnded = !Number.isFinite(intervals[intervals.length - 1].end);

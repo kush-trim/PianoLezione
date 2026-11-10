@@ -13,10 +13,13 @@ npm run dev        # http://localhost:3000
 
 Al primo accesso crea un account da "Registrati". Poi:
 
-1. **Orario** – inserisci le lezioni che tieni ogni settimana.
-2. **Settimana** – fai clic su una lezione per creare il suo piano: data e orari sono già collegati (le ore consecutive della stessa classe diventano una lezione doppia).
-3. Nell'editor aggiungi le fasi: gli orari si ricalcolano a ogni modifica.
+1. **Settimana** – fai clic su un punto della griglia per aggiungere una lezione: si ripete ogni settimana da lì in poi. Un clic su una lezione ne mostra i dettagli, il piano collegato e le modifiche valide per quel solo giorno (spostamento, aula, annullamento). In alto, l'anno scolastico con le settimane numerate.
+2. **Nuovo piano** – la creazione guidata in cinque passi: lezione, punto di partenza, obiettivi (con i verbi dell'elenco), fasi, verifica.
+3. Nell'editor gli orari delle fasi si ricalcolano a ogni modifica. Superare la durata prevista è ammesso: viene solo segnalato.
 4. **Esporta PDF** produce il documento nel formato del modello.
+5. **Impostazioni** – durata dell'ora di lezione, anno scolastico e vacanze, verbi per gli obiettivi, assistente AI (Claude, Gemini o OpenAI con la propria chiave), calendari iCal in sola lettura.
+
+Il file `.env` contiene anche `APP_SECRET`: serve a cifrare nel database le chiavi AI e i link dei calendari. In sviluppo può restare vuota; in produzione è obbligatoria (lo script di deploy la genera sul server).
 
 ## Comandi
 
@@ -32,10 +35,12 @@ Al primo accesso crea un account da "Registrati". Poi:
 
 - `prisma/schema.prisma` – modello dati (utenti, sessioni, cartelle, orario, piani, fasi, versioni)
 - `src/lib/schedule.ts` – motore orari: funzioni pure, con test in `schedule.test.ts`
+- `src/lib/calendar.ts` – lezioni ricorrenti, modifiche di un giorno, settimane dell'anno scolastico (test in `calendar.test.ts`)
+- `src/lib/ical.ts` – lettura dei calendari esterni; `src/lib/ai.ts`, `ai-proposal.ts` – assistente; `src/lib/crypto.ts` – cifratura
 - `src/lib/plans.ts`, `auth.ts`, `http.ts`, `validation.ts` – logica lato server
 - `src/lib/pdf/PianoLezionePdf.tsx` – layout del PDF
 - `src/app/api/` – API REST
-- `src/app/(app)/` – pagine: `settimana`, `cartelle`, `orario`, `modelli`, `storico`, `piani/[id]`
+- `src/app/(app)/` – pagine: `settimana`, `cartelle`, `modelli`, `storico`, `impostazioni`, `piani/nuovo`, `piani/[id]`
 - `src/components/` – editor (tabella delle fasi, barra dei tempi), griglia settimanale, componenti di base
 
 ## API
@@ -45,7 +50,14 @@ Tutte le rotte, tranne registrazione e login, richiedono la sessione (cookie `ps
 | Rotta | Metodi |
 | --- | --- |
 | `/api/auth/register`, `/login`, `/logout`, `/me` | POST, POST, POST, GET |
-| `/api/timetable`, `/api/timetable/:id` | GET, POST · PUT, DELETE |
+| `/api/timetable` (`?date=` → lezioni di quel giorno), `/api/timetable/:id` | GET, POST · PUT, DELETE |
+| `/api/timetable/:id/exceptions/:data` (modifica di un solo giorno) | PUT, DELETE |
+| `/api/timetable/:id/split`, `/end` (da una data in poi) | POST |
+| `/api/events`, `/api/events/:id` | POST · PUT, DELETE |
+| `/api/settings`, `/api/settings/calendars`, `/api/settings/calendars/:id` | GET, PUT · POST · DELETE |
+| `/api/verbs`, `/api/school-years`, `/api/holidays` (e `/:id`) | GET, POST · DELETE (anni: anche PUT) |
+| `/api/year?date=` (settimane numerate dell'anno scolastico) | GET |
+| `/api/ai/chat` (risposta in streaming), `/api/ai/models?provider=` | POST · GET |
 | `/api/folders`, `/api/folders/:id` | GET, POST · PATCH, DELETE |
 | `/api/plans` (`?folderId=`, `?q=`, `?templates=1`, `?limit=`) | GET, POST |
 | `/api/plans/:id` | GET, PUT, DELETE |

@@ -52,6 +52,9 @@ if [ ! -f .env ]; then
   printf 'DATABASE_URL="file:%s/data/pianolezione.db"\n' "$PWD" > .env
   chmod 600 .env
 fi
+# Chiave per cifrare i dati riservati (chiavi AI, link dei calendari): generata una volta sola.
+# Se si perde, le chiavi e i calendari salvati dagli utenti vanno reinseriti.
+grep -q '^APP_SECRET=' .env || printf 'APP_SECRET="%s"\n' "$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')" >> .env
 
 # Dipendenze: reinstallate solo se package-lock.json e' cambiato.
 if ! sha1sum -c --status node_modules/.package-lock.sha1 2>/dev/null; then

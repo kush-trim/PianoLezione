@@ -23,6 +23,9 @@ export const POST = route<{ id: string; vid: string }>(async (_req, { id, vid })
         obiettivoInsegnamento: s.obiettivoInsegnamento,
         traguardo: s.traguardo,
         obiettivoApprendimento: s.obiettivoApprendimento,
+        // Le versioni salvate prima degli obiettivi strutturati non li hanno.
+        obiettiviInsJson: JSON.stringify(s.obiettiviInsegnamento ?? []),
+        obiettiviAppJson: JSON.stringify(s.obiettiviApprendimento ?? []),
         verifica: s.verifica,
         allegati: s.allegati,
         allegatiAuto: s.allegatiAuto,

@@ -1,6 +1,6 @@
 // Funzioni condivise tra client e server (nessuna dipendenza dal database).
 
-import type { SlotDTO } from "./types";
+import type { Obiettivo, SlotDTO, VerbKind } from "./types";
 import { toMin } from "./schedule";
 
 export const WEEKDAYS = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
@@ -84,4 +84,19 @@ export function consecutiveSlots(slot: SlotDTO, all: SlotDTO[], maxGap = 30): Sl
   while (lo > 0 && toMin(same[lo].startTime) - toMin(same[lo - 1].endTime) <= maxGap) lo--;
   while (hi < same.length - 1 && toMin(same[hi + 1].startTime) - toMin(same[hi].endTime) <= maxGap) hi++;
   return same.slice(lo, hi + 1);
+}
+
+// --- Obiettivi strutturati ---
+
+export const SUBJECT: Record<VerbKind, string> = {
+  insegnamento: "Il docente",
+  apprendimento: "L’allievo",
+};
+
+/** Il testo degli obiettivi come compare nel piano: una riga per obiettivo. */
+export function objectivesText(kind: VerbKind, items: Obiettivo[]): string {
+  return items
+    .filter((o) => o.verbo.trim() || o.testo.trim())
+    .map((o) => `- ${[SUBJECT[kind], o.verbo.trim(), o.testo.trim()].filter(Boolean).join(" ")}`)
+    .join("\n");
 }

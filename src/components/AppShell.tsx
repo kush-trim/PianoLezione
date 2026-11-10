@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, Clock3, FolderTree, History, LayoutTemplate, LogOut } from "lucide-react";
+import { CalendarDays, FolderTree, History, LayoutTemplate, LogOut, Settings } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense, useEffect, useState, type ReactNode } from "react";
@@ -11,9 +11,9 @@ import { cx, ToastProvider } from "./ui";
 const NAV = [
   { href: "/settimana", label: "Settimana", icon: CalendarDays },
   { href: "/cartelle", label: "Cartelle", icon: FolderTree },
-  { href: "/orario", label: "Orario", icon: Clock3 },
   { href: "/modelli", label: "Modelli", icon: LayoutTemplate },
   { href: "/storico", label: "Storico", icon: History },
+  { href: "/impostazioni", label: "Impostazioni", icon: Settings },
 ];
 
 function NavLinks({ pathname }: { pathname: string | null }) {

@@ -109,3 +109,19 @@ describe("redistribute", () => {
     expect(redistribute([5, 20, 20], 45)).toEqual([5, 20, 20]);
   });
 });
+
+describe("durata dichiarata e sforamento", () => {
+  it("senza orario usa la durata dichiarata", () => {
+    const s = computeSchedule([], [20, 20, 10], 45);
+    expect(s.hasClock).toBe(false);
+    expect(s.available).toBe(45);
+    expect(s.diff).toBe(-5);
+    expect(s.phases.map((p) => p.overflow)).toEqual([false, false, true]);
+  });
+
+  it("lo sforamento non ferma il calcolo degli orari", () => {
+    const s = computeSchedule([iv("08:00", "08:45")], [30, 30]);
+    expect(clock(s)).toEqual(["08:00-08:30", "08:30-09:00"]);
+    expect(s.diff).toBe(-15);
+  });
+});

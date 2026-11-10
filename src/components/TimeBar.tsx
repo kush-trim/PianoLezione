@@ -20,14 +20,14 @@ export function TimeBar({
   const crossing = phases.filter((_, i) => schedule.phases[i]?.crossesBreak);
   const last = schedule.phases[schedule.phases.length - 1];
 
-  let tone: "ok" | "warn" | "danger" | "neutral" = "neutral";
+  let tone: "ok" | "warn" | "neutral" = "neutral";
   let message: string;
   if (phases.length === 0) {
     message = available ? `Lezione di ${available}’: aggiungi le fasi.` : "Aggiungi le fasi per vedere i tempi.";
-  } else if (!hasClock) {
-    message = `Durata totale ${total}’. Collega una lezione o indica l’ora di inizio per avere gli orari.`;
   } else if (available === null || diff === null) {
-    message = `${total}’ pianificati, fino alle ${fromMin(last.end)}.`;
+    message = hasClock
+      ? `${total}’ pianificati, fino alle ${fromMin(last.end)}.`
+      : `Durata totale ${total}’. Indica la durata prevista o collega una lezione.`;
   } else if (diff === 0) {
     tone = "ok";
     message = `${total}’ su ${available}’: la lezione è piena.`;
@@ -35,8 +35,9 @@ export function TimeBar({
     tone = "warn";
     message = `${total}’ su ${available}’: restano ${diff}’ liberi.`;
   } else {
-    tone = "danger";
-    message = `${total}’ su ${available}’: ${-diff}’ in eccesso.`;
+    // Sforare è ammesso: è un'informazione, non un errore.
+    tone = "warn";
+    message = `${total}’ su ${available}’: ${-diff}’ oltre la durata prevista.`;
   }
 
   const Icon = tone === "ok" ? CheckCircle2 : AlertTriangle;
@@ -52,7 +53,7 @@ export function TimeBar({
               title={`${p.name || "Fase"} · ${p.durationMin}’`}
               className={cx(
                 "tabular flex items-center justify-center overflow-hidden border-r border-surface text-xs font-medium text-white",
-                t?.overflow ? "bg-danger" : i % 2 ? "bg-accent/75" : "bg-accent",
+                t?.overflow ? "bg-warn" : i % 2 ? "bg-accent/75" : "bg-accent",
               )}
               style={{ width: `${(p.durationMin / scale) * 100}%` }}
             >
@@ -69,7 +70,6 @@ export function TimeBar({
             "flex items-center gap-1.5 font-medium",
             tone === "ok" && "text-ok",
             tone === "warn" && "text-warn",
-            tone === "danger" && "text-danger",
           )}
         >
           {tone !== "neutral" && <Icon className="size-4 shrink-0" aria-hidden />}

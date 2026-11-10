@@ -5,7 +5,11 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   serverExternalPackages: ["better-sqlite3", "@react-pdf/renderer"],
   async redirects() {
-    return [{ source: "/", destination: "/settimana", permanent: false }];
+    return [
+      { source: "/", destination: "/settimana", permanent: false },
+      // La vecchia pagina Orario è confluita nella Settimana.
+      { source: "/orario", destination: "/settimana", permanent: false },
+    ];
   },
   turbopack: {
     rules: {
