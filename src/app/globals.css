@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+:root {
+  --paper: #f6f4ee;
+  --surface: #ffffff;
+  --sunken: #efece4;
+  --ink: #1d2327;
+  --muted: #667078;
+  --line: #dfdacd;
+  --line-strong: #c9c2b1;
+  --accent: #0e5a5a;
+  --accent-hover: #0a4747;
+  --accent-soft: #dcebe8;
+  --warn: #a15c00;
+  --warn-soft: #fbefd6;
+  --danger: #a3271f;
+  --danger-soft: #fbe4e1;
+  --ok: #1f6b3a;
+  --ok-soft: #dff1e4;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-display: var(--font-newsreader), Georgia, serif;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* I campi dentro la tabella delle fasi non hanno bordo: lo mostra la cella. */
+.cell-input {
+  width: 100%;
+  resize: none;
+  background: transparent;
+  border-radius: 4px;
+  padding: 4px 6px;
+  line-height: 1.4;
+}
+.cell-input:hover {
+  background: color-mix(in srgb, var(--sunken) 60%, transparent);
+}
+.cell-input:focus {
+  background: var(--surface);
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+.cell-input::placeholder {
+  color: color-mix(in srgb, var(--muted) 60%, transparent);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

@@ -1,0 +1,154 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+
+  sessions       Session[]
+  folders        Folder[]
+  slots          TimetableSlot[]
+  plans          LessonPlan[]
+  phaseTemplates PhaseTemplate[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Folder {
+  id        String   @id @default(cuid())
+  userId    String
+  parentId  String?
+  name      String
+  color     String   @default("slate")
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent   Folder?      @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children Folder[]     @relation("FolderTree")
+  plans    LessonPlan[]
+
+  @@index([userId])
+}
+
+// Una lezione ricorrente dell'orario settimanale del docente.
+model TimetableSlot {
+  id        String @id @default(cuid())
+  userId    String
+  weekday   Int // 1 = lunedì ... 7 = domenica
+  startTime String // "HH:MM"
+  endTime   String // "HH:MM"
+  subject   String
+  className String @default("")
+  room      String @default("")
+  color     String @default("blue")
+
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plans PlanSlot[]
+
+  @@index([userId])
+}
+
+model LessonPlan {
+  id       String  @id @default(cuid())
+  userId   String
+  folderId String?
+
+  title String @default("")
+  date  String? // "YYYY-MM-DD"
+  // Orario manuale, usato solo se il piano non è collegato a lezioni dell'orario.
+  manualStart    String?
+  manualDuration Int?
+
+  prerequisiti           String @default("")
+  obiettivoInsegnamento  String @default("")
+  traguardo              String @default("")
+  obiettivoApprendimento String @default("")
+  verifica               String @default("")
+  allegati               String @default("")
+  allegatiAuto           Boolean @default(true)
+  sezioniExtra           String @default("[]") // JSON: [{ id, titolo, testo }]
+
+  isTemplate Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder   Folder?       @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  phases   Phase[]
+  slots    PlanSlot[]
+  versions PlanVersion[]
+
+  @@index([userId, date])
+  @@index([userId, folderId])
+}
+
+model PlanSlot {
+  planId String
+  slotId String
+
+  plan LessonPlan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  slot TimetableSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+
+  @@id([planId, slotId])
+}
+
+model Phase {
+  id                 String @id @default(cuid())
+  planId             String
+  order              Int
+  name               String @default("")
+  modality           String @default("")
+  durationMin        Int    @default(5)
+  obiettiviSpecifici String @default("")
+  descrizione        String @default("")
+  prodottoAtteso     String @default("")
+  materiale          String @default("")
+
+  plan LessonPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId])
+}
+
+model PhaseTemplate {
+  id          String @id @default(cuid())
+  userId      String
+  name        String
+  modality    String @default("")
+  durationMin Int    @default(5)
+  order       Int    @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PlanVersion {
+  id        String   @id @default(cuid())
+  planId    String
+  snapshot  String // JSON del piano con le fasi
+  createdAt DateTime @default(now())
+
+  plan LessonPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@index([planId, createdAt])
+}
