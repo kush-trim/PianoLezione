@@ -643,9 +643,9 @@ const gruppi: Record<string, Endpoint[]> = {
     {
       metodo: "GET",
       percorso: "/api/health",
-      descrizione: "Controllo di salute: risponde solo se anche il database funziona.",
+      descrizione: "Controllo di salute: risponde solo se anche il database funziona, e dice quale versione è in esecuzione.",
       autenticazione: false,
-      risposta: ok,
+      risposta: { ok: "true", version: "string — il commit in produzione" },
     },
   ],
 };

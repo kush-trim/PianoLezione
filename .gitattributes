@@ -1,0 +1,2 @@
+# Gli script per il server devono avere i fine riga di Linux anche su Windows.
+*.sh text eol=lf

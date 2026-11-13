@@ -87,8 +87,25 @@ Il database locale è SQLite (`dev.db`). Per pubblicare il sito serve un databas
 
 ## Deploy sul server
 
+**Automatico, a ogni push su `main`.** Non serve fare altro che il push.
+
+1. GitHub (`.github/workflows/deploy.yml`) esegue lint e test, fa la build e pubblica il pacchetto pronto nella release `deploy` del repository. Se lint, test o build falliscono, non viene pubblicato niente.
+2. Sul server un processo pm2 (`pianolezione-deploy`, lo script è `strumenti/server/auto-deploy.sh`) controlla ogni minuto se c'è un pacchetto nuovo. Lo scarica, ne verifica l'impronta, installa le dipendenze se sono cambiate, aggiorna il database e riavvia il sito. Se dopo il riavvio il sito non risponde, rimette il codice di prima.
+3. L'ultimo passo del workflow aspetta che `/api/health` dichiari il commit nuovo: la spunta verde su GitHub significa che il sito è davvero aggiornato.
+
+Il server non è raggiungibile da GitHub (rete privata), per questo è il server a prendersi il pacchetto e non GitHub a spingerlo. La build si fa su GitHub perché sul server non è possibile.
+
+Da sapere:
+
+- Chiunque possa fare push su `main` pubblica sul sito ed esegue codice sul server: vale anche per i collaboratori del repository.
+- Il database (`data/`) e il file `.env` del server non vengono mai toccati; prima di ogni aggiornamento dello schema viene fatta una copia del database. Le modifiche allo schema che cancellerebbero dati vengono rifiutate e il deploy si ferma.
+- Il ripristino automatico riguarda il codice, non lo schema del database.
+- Registro sul server: `~/pianolezione-deploy/deploy.log`. Stato: `pm2 list`.
+
+Deploy manuale, di riserva (dal PC, con accesso SSH al server):
+
 ```powershell
 powershell -File strumenti\deploy.ps1
 ```
 
-Impacchetta l'ultimo commit, fa la build sul PC, la copia sul server, installa le dipendenze se sono cambiate, aggiorna il database e riavvia il processo pm2. Il database (`data/`) e il file `.env` del server non vengono toccati. L'indirizzo del server va scritto in `strumenti/server-remoto.txt`, che non è in git.
+Fa la build sul PC e la copia sul server. L'indirizzo del server va scritto in `strumenti/server-remoto.txt`, che non è in git. Il prossimo push su `main` sostituisce comunque ciò che è stato pubblicato a mano.

@@ -1,0 +1,85 @@
+name: Deploy
+
+# A ogni push su main: controlli, build e pubblicazione del pacchetto pronto.
+# Il server non è raggiungibile da GitHub (è dietro una rete privata), quindi non lo si
+# contatta da qui: è il server a controllare ogni minuto se c'è un pacchetto nuovo e a
+# installarlo (strumenti/server/auto-deploy.sh). L'ultimo passo aspetta che il sito
+# pubblico dichiari la versione appena costruita.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Un deploy alla volta: un push arrivato durante una build aspetta il suo turno.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: write # per pubblicare il pacchetto come release
+
+env:
+  SITE_URL: https://pianolezione.kushtrimrushi.ch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24 # la stessa del server
+          cache: npm
+
+      - name: Dipendenze
+        run: npm ci --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Pacchetto
+        run: |
+          mkdir pkg
+          # Solo i file del repository, più la build. I collegamenti in .next/node_modules
+          # restano collegamenti: il server li ripunta ai propri pacchetti.
+          git archive HEAD | tar -x -C pkg
+          tar -c --exclude=.next/cache --exclude=.next/dev .next | tar -x -C pkg
+          tar -czf build.tar.gz -C pkg .
+          # VERSION: riga 1 il commit, riga 2 l'impronta del pacchetto.
+          printf '%s\n%s\n' "$GITHUB_SHA" "$(sha256sum build.tar.gz | cut -d' ' -f1)" > VERSION
+          ls -lh build.tar.gz && cat VERSION
+
+      - name: Pubblica il pacchetto
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Una sola release "deploy", sostituita a ogni push: il server legge sempre gli stessi indirizzi.
+          gh release delete deploy --cleanup-tag --yes 2>/dev/null || true
+          gh release create deploy build.tar.gz VERSION \
+            --target "$GITHUB_SHA" \
+            --title "Pacchetto in produzione" \
+            --notes "Build automatica di ${GITHUB_SHA}. La installa il server: non è una versione da scaricare." \
+            --latest=false
+
+      - name: Aspetta che il server lo installi
+        run: |
+          echo "Attendo che $SITE_URL dichiari la versione $GITHUB_SHA"
+          for i in $(seq 60); do
+            body=$(curl -fsS --max-time 15 "$SITE_URL/api/health" || true)
+            case "$body" in
+              *"\"version\":\"$GITHUB_SHA\""*) echo "In produzione: $body"; exit 0 ;;
+            esac
+            sleep 10
+          done
+          echo "::error::Dopo 10 minuti il sito non dichiara la versione nuova. Ultima risposta: ${body:-nessuna}"
+          echo "Sul server: tail -50 ~/pianolezione-deploy/deploy.log"
+          exit 1

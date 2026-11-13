@@ -1,4 +1,7 @@
-# Pubblica l'ultimo commit sul server e riavvia il sito.
+# Deploy manuale: pubblica l'ultimo commit sul server e riavvia il sito.
+# Di norma non serve: a ogni push su main il deploy parte da solo (.github/workflows/deploy.yml).
+# Questo script resta per le emergenze, o per pubblicare un commit non ancora caricato su GitHub
+# (verra' sostituito dal prossimo push).
 #
 #   powershell -File strumenti\deploy.ps1
 #
@@ -43,7 +46,7 @@ mkdir -p ~/@DIR@/data && cd ~/@DIR@
 
 # Si cancellano SOLO le cartelle del codice, cosi' spariscono i file tolti dal repository.
 # Mai data/ (database), .env, node_modules.
-rm -rf src prisma public strumenti .next
+rm -rf src prisma public strumenti .next .github
 tar -xf ~/@DIR@-deploy.tar && rm ~/@DIR@-deploy.tar
 tar -xf ~/@DIR@-next.tar && rm ~/@DIR@-next.tar
 
@@ -78,6 +81,8 @@ for p in .next/node_modules/* .next/node_modules/@*/*; do
   rm -rf "$p" && ln -s "$PWD/node_modules/$name" "$p"
 done
 
+echo '@SHA@' > VERSION
+
 if pm2 describe @PM2NAME@ >/dev/null 2>&1; then
   pm2 restart @PM2NAME@ --update-env >/dev/null
 else
@@ -93,7 +98,8 @@ for i in $(seq 60); do
 done
 echo "Il server non risponde: pm2 logs @PM2NAME@ --lines 100"; exit 1
 '@
-$body = $remote.Replace("@DIR@", $Dir).Replace("@PM2NAME@", $Pm2Name).Replace("@PORT@", "$Port").Replace("@HEALTH@", $Health)
+$sha = (git -C $root rev-parse HEAD).Trim()
+$body = $remote.Replace("@SHA@", $sha).Replace("@DIR@", $Dir).Replace("@PM2NAME@", $Pm2Name).Replace("@PORT@", "$Port").Replace("@HEALTH@", $Health)
 $script = Join-Path $env:TEMP "$Dir-deploy.sh"
 [IO.File]::WriteAllText($script, $body.Replace("`r`n", "`n") + "`n", (New-Object Text.UTF8Encoding $false))
 

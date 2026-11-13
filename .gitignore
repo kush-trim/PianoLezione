@@ -56,3 +56,6 @@ next-env.d.ts
 
 # indirizzo del server: resta solo sul PC
 /strumenti/server-remoto.txt
+
+# versione in produzione: la scrive il deploy sul server
+/VERSION
