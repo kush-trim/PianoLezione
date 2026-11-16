@@ -11,12 +11,19 @@ import { ApiError } from "./http";
 
 export type DriveFile = { id: string; name: string; mimeType: string; size: number; webViewLink: string };
 
+/** Spazio del Drive dell'utente, in byte. limit è null se lo spazio è illimitato. */
+export type DriveQuota = { usage: number; limit: number | null };
+
 export interface DriveClient {
   /** La cartella "PianoStudio" dell'utente: creata la prima volta, ricreata se è stata cestinata. */
   appFolder(): Promise<string>;
   createFolder(name: string, parentId: string): Promise<{ id: string; webViewLink: string }>;
   upload(parentId: string, name: string, mimeType: string, data: Uint8Array): Promise<DriveFile>;
   rename(id: string, name: string): Promise<void>;
+  /** Sposta un file (o una cartella) da una cartella a un'altra. */
+  move(id: string, fromParentId: string, toParentId: string): Promise<void>;
+  /** Spazio usato e disponibile sul Drive dell'utente. */
+  quota(): Promise<DriveQuota>;
   /** Nel cestino di Drive: recuperabile per 30 giorni. */
   trash(id: string): Promise<void>;
   /** Condivide con un altro account Google come "editor"; restituisce l'id del permesso. */
@@ -142,6 +149,18 @@ function realDrive(userId: string): DriveClient {
         body: JSON.stringify({ name }),
       });
     },
+    async move(id, from, to) {
+      await call(userId, `${API}/${id}?addParents=${encodeURIComponent(to)}&removeParents=${encodeURIComponent(from)}&fields=id`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+    },
+    async quota() {
+      const res = await call(userId, "https://www.googleapis.com/drive/v3/about?fields=storageQuota(limit,usage)");
+      const { storageQuota: q } = await json<{ storageQuota?: { limit?: string; usage?: string } }>(res);
+      return { usage: Number(q?.usage ?? 0), limit: q?.limit ? Number(q.limit) : null };
+    },
     async trash(id) {
       await call(userId, `${API}/${id}?fields=id`, {
         method: "PATCH",
@@ -216,6 +235,24 @@ function fakeDrive(userId: string): DriveClient {
     async rename(i, name) {
       await authorized();
       item(i).name = name;
+    },
+    async move(i, from, to) {
+      await authorized();
+      const f = item(i);
+      item(to);
+      if (f.parent !== from) throw new ApiError(400, "Il file non è nella cartella indicata");
+      f.parent = to;
+    },
+    async quota() {
+      await authorized();
+      // I file di questo utente nel Drive finto, più 1 GB di "altro" per avere un numero realistico.
+      const root = fakeRoots.get(userId);
+      const mine = (it: FakeItem): boolean => {
+        for (let p: FakeItem | undefined = it; p; p = p.parent ? fakeStore.get(p.parent) : undefined) if (p.id === root) return true;
+        return false;
+      };
+      const usage = [...fakeStore.values()].filter((it) => !it.trashed && mine(it)).reduce((n, it) => n + it.size, 0);
+      return { usage: usage + 1_000_000_000, limit: 15_000_000_000 };
     },
     async trash(i) {
       await authorized();

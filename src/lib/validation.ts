@@ -212,12 +212,19 @@ export const calendarApplySchema = z.object({
 export const exerciseUpdateSchema = z.object({
   title: short.min(1).optional(),
   note: z.string().trim().max(2000).optional(),
+  /** Sposta il file in questa cartella (dello stesso Drive). */
+  folderId: z.string().min(1).optional(),
 });
 
 // --- Cartelle di esercizi (Google Drive) ---
 
 export const materialFolderSchema = z.object({
   name: z.string().trim().min(1, "inserisci un nome").max(100),
+});
+
+export const materialFolderCreateSchema = materialFolderSchema.extend({
+  /** Con parentId è una sottocartella. */
+  parentId: z.string().min(1).nullable().optional(),
 });
 
 export const inviteSchema = z.object({

@@ -162,6 +162,29 @@ export async function uploadExercises(
   return out;
 }
 
+/**
+ * Sposta un file in un'altra cartella dello stesso Drive (stesso proprietario).
+ * Chi non vede la nuova cartella perde il file anche dai suoi piani.
+ */
+export async function moveExercise(userId: string, id: string, folderId: string) {
+  await editableExercise(userId, id);
+  const ex = await db.exercise.findUniqueOrThrow({ where: { id }, include: { folder: true } });
+  const { folder: target } = await folderAccess(userId, folderId);
+  if (ex.folderId === target.id) return;
+  if (!ex.folder || !ex.driveFileId) throw new ApiError(400, "Questo file non è ancora su Google Drive");
+  if (target.ownerId !== ex.folder.ownerId) {
+    throw new ApiError(400, "Un file si sposta solo tra cartelle dello stesso Google Drive (dello stesso proprietario)");
+  }
+  await driveFor(target.ownerId).move(ex.driveFileId, ex.folder.driveFolderId, target.driveFolderId);
+  const rootId = target.rootId ?? target.id;
+  const members = await db.materialFolderMember.findMany({ where: { folderId: rootId }, select: { userId: true } });
+  const allowed = [target.ownerId, ...members.map((m) => m.userId)];
+  await db.$transaction([
+    db.exercise.update({ where: { id }, data: { folderId: target.id } }),
+    db.planExercise.deleteMany({ where: { exerciseId: id, plan: { userId: { notIn: allowed } } } }),
+  ]);
+}
+
 /** Elimina: su Drive il file va nel cestino (recuperabile per 30 giorni). */
 export async function deleteExercise(userId: string, id: string) {
   await editableExercise(userId, id);

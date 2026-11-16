@@ -1,22 +1,26 @@
-// Cartelle di esercizi su Google Drive: accesso, condivisione, inviti, notifiche.
+// Cartelle di esercizi su Google Drive: accesso, sottocartelle, condivisione, inviti, notifiche.
 // Ogni cartella è una cartella sul Drive del proprietario; le operazioni su Drive
 // si fanno sempre con il suo account (permesso "drive.file": l'app vede solo ciò che ha creato).
+// Si condivide la cartella principale: i suoi membri vedono anche tutte le sottocartelle.
 
 import { db } from "./db";
 import { googleEmailOf } from "./google-account";
 import { DriveNotAuthorized, driveFor } from "./google-drive";
 import { ApiError, notFound } from "./http";
-import type { FoldersDTO, InviteDTO, MaterialFolderDTO, NotificationDTO, NotificationsDTO } from "./types";
+import type { FoldersDTO, InviteDTO, MaterialFolderDTO, NotificationDTO, NotificationsDTO, StorageDTO } from "./types";
 
 export const DEFAULT_FOLDER_NAME = "I miei esercizi";
 
 // --- Accesso ---
 
-/** La cartella, se l'utente ne è proprietario o membro; altrimenti 404. */
+/** Condizione Prisma: le cartelle che l'utente vede (sue, o dentro una principale di cui è membro). */
+const visibleFolders = (userId: string) => ({
+  OR: [{ ownerId: userId }, { members: { some: { userId } } }, { root: { members: { some: { userId } } } }],
+});
+
+/** La cartella, se l'utente ne è proprietario o membro (anche tramite la principale); altrimenti 404. */
 export async function folderAccess(userId: string, folderId: string) {
-  const folder = await db.materialFolder.findFirst({
-    where: { id: folderId, OR: [{ ownerId: userId }, { members: { some: { userId } } }] },
-  });
+  const folder = await db.materialFolder.findFirst({ where: { id: folderId, ...visibleFolders(userId) } });
   if (!folder) throw notFound();
   return { folder, role: folder.ownerId === userId ? ("owner" as const) : ("member" as const) };
 }
@@ -26,14 +30,33 @@ export const accessibleExercises = (userId: string) => ({
   OR: [
     // File caricati sul sito prima di Drive.
     { folderId: null, userId },
-    { folder: { OR: [{ ownerId: userId }, { members: { some: { userId } } }] } },
+    { folder: visibleFolders(userId) },
   ],
 });
+
+type FolderRow = { ownerId: string; rootId: string | null; createdById: string | null };
+
+/** Rinominare ed eliminare: il proprietario, o un membro per le sottocartelle che ha creato lui. */
+const canManage = (userId: string, f: FolderRow) => f.ownerId === userId || (!!f.rootId && f.createdById === userId);
 
 async function assertOwner(userId: string, folderId: string) {
   const access = await folderAccess(userId, folderId);
   if (access.role !== "owner") throw new ApiError(403, "Solo chi ha creato la cartella può farlo");
   return access.folder;
+}
+
+/** Si condivide solo la cartella principale: le sottocartelle seguono. */
+async function assertRoot(folder: { rootId: string | null }) {
+  if (!folder.rootId) return;
+  const root = await db.materialFolder.findUnique({ where: { id: folder.rootId }, select: { name: true } });
+  throw new ApiError(400, `Le sottocartelle seguono la condivisione di «${root?.name ?? "cartella principale"}»: condividi quella.`);
+}
+
+/** Due cartelle con lo stesso nome nello stesso posto confondono: non si possono avere. */
+async function assertFreeName(name: string, where: { ownerId: string; parentId: string | null }, exceptId?: string) {
+  const same = await db.materialFolder.findMany({ where: { ...where, ...(exceptId ? { id: { not: exceptId } } : {}) }, select: { name: true } });
+  const lower = name.trim().toLowerCase();
+  if (same.some((f) => f.name.trim().toLowerCase() === lower)) throw new ApiError(409, `C'è già una cartella «${name}» qui`);
 }
 
 // --- Cartelle ---
@@ -60,28 +83,50 @@ export async function listFolders(userId: string): Promise<FoldersDTO> {
     if (!(e instanceof DriveNotAuthorized)) throw e;
     driveAuthorized = false;
   }
+  const person = { select: { id: true, name: true, email: true } } as const;
   const rows = await db.materialFolder.findMany({
-    where: { OR: [{ ownerId: userId }, { members: { some: { userId } } }] },
+    where: visibleFolders(userId),
     include: {
-      owner: { select: { id: true, name: true, email: true } },
-      members: { include: { user: { select: { id: true, name: true, email: true } } }, orderBy: { joinedAt: "asc" } },
+      owner: person,
+      createdBy: person,
+      members: { include: { user: person }, orderBy: { joinedAt: "asc" } },
       invites: { where: { status: "pending" }, orderBy: { createdAt: "asc" } },
-      _count: { select: { exercises: true } },
     },
   });
-  const folders = rows.map(
-    (f): MaterialFolderDTO => ({
+  // Quanti file, quanto occupano e l'ultimo aggiunto, cartella per cartella.
+  const stats = new Map(
+    (
+      await db.exercise.groupBy({
+        by: ["folderId"],
+        where: { folderId: { in: rows.map((f) => f.id) } },
+        _count: { _all: true },
+        _sum: { size: true },
+        _max: { createdAt: true },
+      })
+    ).map((g) => [g.folderId, g]),
+  );
+  const folders = rows.map((f): MaterialFolderDTO => {
+    const st = stats.get(f.id);
+    return {
       id: f.id,
       name: f.name,
       isDefault: f.isDefault,
+      parentId: f.parentId,
+      rootId: f.rootId,
       role: f.ownerId === userId ? "owner" : "member",
       owner: f.owner,
+      // Le cartelle principali nate prima delle sottocartelle non hanno createdBy: è il proprietario.
+      createdBy: f.createdBy ?? (f.rootId ? null : f.owner),
+      createdAt: f.createdAt.toISOString(),
+      canManage: canManage(userId, f),
       members: f.members.map((m) => ({ ...m.user, joinedAt: m.joinedAt.toISOString() })),
       invites: f.ownerId === userId ? f.invites.map((i) => ({ id: i.id, email: i.email, createdAt: i.createdAt.toISOString() })) : [],
-      fileCount: f._count.exercises,
+      fileCount: st?._count._all ?? 0,
+      bytes: st?._sum.size ?? 0,
+      lastFileAt: st?._max.createdAt?.toISOString() ?? null,
       driveUrl: driveFolderUrl(f.driveFolderId),
-    }),
-  );
+    };
+  });
   // Prima la cartella personale, poi le mie, poi quelle condivise con me; in ordine di nome.
   folders.sort(
     (a, b) =>
@@ -92,27 +137,63 @@ export async function listFolders(userId: string): Promise<FoldersDTO> {
   return { folders, driveAuthorized };
 }
 
-export async function createFolder(userId: string, name: string) {
-  const drive = driveFor(userId);
-  const root = await drive.appFolder();
-  const created = await drive.createFolder(name, root);
-  return db.materialFolder.create({ data: { ownerId: userId, name, driveFolderId: created.id } });
+/**
+ * Nuova cartella. Senza parentId è una cartella principale sul mio Drive; con parentId è una
+ * sottocartella, sul Drive del proprietario della principale (anche se la crea un membro).
+ */
+export async function createFolder(userId: string, name: string, parentId?: string | null) {
+  if (!parentId) {
+    await assertFreeName(name, { ownerId: userId, parentId: null });
+    const drive = driveFor(userId);
+    const root = await drive.appFolder();
+    const created = await drive.createFolder(name, root);
+    return db.materialFolder.create({ data: { ownerId: userId, name, driveFolderId: created.id, createdById: userId } });
+  }
+  const { folder: parent } = await folderAccess(userId, parentId);
+  await assertFreeName(name, { ownerId: parent.ownerId, parentId: parent.id });
+  const created = await driveFor(parent.ownerId).createFolder(name, parent.driveFolderId);
+  return db.materialFolder.create({
+    data: {
+      ownerId: parent.ownerId,
+      name,
+      driveFolderId: created.id,
+      parentId: parent.id,
+      rootId: parent.rootId ?? parent.id,
+      createdById: userId,
+    },
+  });
+}
+
+async function manageableFolder(userId: string, folderId: string) {
+  const { folder } = await folderAccess(userId, folderId);
+  if (!canManage(userId, folder)) {
+    throw new ApiError(403, "Solo il proprietario della cartella (o chi ha creato questa sottocartella) può farlo");
+  }
+  return folder;
 }
 
 export async function renameFolder(userId: string, folderId: string, name: string) {
-  const folder = await assertOwner(userId, folderId);
-  await driveFor(userId).rename(folder.driveFolderId, name);
+  const folder = await manageableFolder(userId, folderId);
+  await assertFreeName(name, { ownerId: folder.ownerId, parentId: folder.parentId }, folder.id);
+  await driveFor(folder.ownerId).rename(folder.driveFolderId, name);
   await db.materialFolder.update({ where: { id: folderId }, data: { name } });
 }
 
-/** Elimina la cartella: su Drive va nel cestino (con i file), nel sito sparisce per tutti. */
+/**
+ * Elimina la cartella con le sottocartelle e i file: su Drive va nel cestino,
+ * nel sito sparisce per tutti. Una principale condivisa avvisa i membri.
+ */
 export async function deleteFolder(userId: string, folderId: string) {
-  const folder = await assertOwner(userId, folderId);
+  const folder = await manageableFolder(userId, folderId);
   if (folder.isDefault) throw new ApiError(400, `"${DEFAULT_FOLDER_NAME}" non si può eliminare`);
   try {
-    await driveFor(userId).trash(folder.driveFolderId);
+    await driveFor(folder.ownerId).trash(folder.driveFolderId);
   } catch (e) {
     if (!(e instanceof ApiError && e.status === 404)) throw e; // già tolta su Drive
+  }
+  if (folder.rootId) {
+    await db.materialFolder.delete({ where: { id: folderId } });
+    return;
   }
   const members = await db.materialFolderMember.findMany({ where: { folderId }, select: { userId: true } });
   const owner = await db.user.findUnique({ where: { id: userId }, select: { name: true } });
@@ -130,6 +211,7 @@ export async function deleteFolder(userId: string, folderId: string) {
 
 export async function invite(userId: string, folderId: string, rawEmail: string) {
   const folder = await assertOwner(userId, folderId);
+  await assertRoot(folder);
   const email = rawEmail.trim().toLowerCase();
   if (email === (await googleEmailOf(userId))) throw new ApiError(400, "Non puoi invitare te stesso");
   const members = await db.materialFolderMember.findMany({
@@ -204,6 +286,7 @@ export async function declineInvite(userId: string, inviteId: string) {
  */
 export async function removeMember(actorId: string, folderId: string, memberId: string) {
   const { folder, role } = await folderAccess(actorId, folderId);
+  await assertRoot(folder);
   const leaving = actorId === memberId;
   if (!leaving && role !== "owner") throw new ApiError(403, "Solo chi ha creato la cartella può togliere qualcuno");
   if (leaving && role === "owner") throw new ApiError(400, "Sei il proprietario: puoi eliminare la cartella, non uscirne");
@@ -218,7 +301,10 @@ export async function removeMember(actorId: string, folderId: string, memberId: 
   }
   const actor = await db.user.findUnique({ where: { id: actorId }, select: { name: true } });
   await db.$transaction([
-    db.planExercise.deleteMany({ where: { plan: { userId: memberId }, exercise: { folderId } } }),
+    // Anche i file delle sottocartelle.
+    db.planExercise.deleteMany({
+      where: { plan: { userId: memberId }, exercise: { folder: { OR: [{ id: folderId }, { rootId: folderId }] } } },
+    }),
     db.materialFolderMember.delete({ where: { folderId_userId: { folderId, userId: memberId } } }),
     db.notification.create({
       data: leaving
@@ -226,6 +312,27 @@ export async function removeMember(actorId: string, folderId: string, memberId: 
         : { userId: memberId, type: "member_removed", data: JSON.stringify({ folder: folder.name, by: actor?.name ?? "" }) },
     }),
   ]);
+}
+
+// --- Spazio ---
+
+/**
+ * Quanto occupano i file di PianoStudio sul mio Drive (anche quelli caricati dai colleghi
+ * nelle mie cartelle) e lo spazio del Drive intero, se Google risponde.
+ */
+export async function storage(userId: string): Promise<StorageDTO> {
+  const agg = await db.exercise.aggregate({
+    where: { userId, folderId: { not: null } },
+    _count: { _all: true },
+    _sum: { size: true },
+  });
+  let drive: StorageDTO["drive"] = null;
+  try {
+    drive = await driveFor(userId).quota();
+  } catch (e) {
+    if (!(e instanceof ApiError)) throw e; // Drive non autorizzato o non raggiungibile: si mostra il resto
+  }
+  return { files: agg._count._all, bytes: agg._sum.size ?? 0, drive };
 }
 
 // --- Notifiche ---

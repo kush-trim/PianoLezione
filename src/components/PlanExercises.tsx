@@ -4,13 +4,20 @@ import { File as FileGeneric, FileImage, FileSpreadsheet, FileText, FileType, Li
 import { useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "@/lib/api";
 import { EXERCISE_ACCEPT, kindOf, type FileKind } from "@/lib/file-types";
+import { flattenTree } from "@/lib/folder-tree";
 import type { ExerciseDTO, ExerciseRef, FoldersDTO } from "@/lib/types";
 import { Button, Dialog, EmptyState, IconButton, Input, Loading, useToast } from "./ui";
 
 const LAST_FOLDER = "pianostudio:cartella-esercizi";
 
 export const fileSize = (bytes: number) =>
-  bytes < 1_000_000 ? `${Math.max(1, Math.round(bytes / 1000))} kB` : `${(bytes / 1_000_000).toFixed(1).replace(".", ",")} MB`;
+  bytes <= 0
+    ? "0 kB"
+    : bytes < 1_000_000
+      ? `${Math.max(1, Math.round(bytes / 1000))} kB`
+      : bytes < 1_000_000_000
+        ? `${(bytes / 1_000_000).toFixed(1).replace(".", ",")} MB`
+        : `${(bytes / 1_000_000_000).toFixed(1).replace(".", ",")} GB`;
 
 const ICONS: Record<FileKind, typeof FileGeneric> = {
   pdf: FileText,
@@ -209,10 +216,15 @@ export function PlanExercises({
               title="Cartella di Google Drive in cui caricare"
               className="h-7 max-w-44 rounded-md border border-line-strong bg-surface px-1.5 text-[13px] text-muted"
             >
-              {folders.folders.map((f) => (
+              {/* Le sottocartelle sotto la loro cartella, rientrate. */}
+              {flattenTree(
+                folders.folders,
+                folders.folders.filter((f) => !f.parentId),
+              ).map(({ folder: f, depth }) => (
                 <option key={f.id} value={f.id}>
+                  {"   ".repeat(depth)}
                   {f.name}
-                  {f.role === "member" ? ` (di ${f.owner.name})` : ""}
+                  {f.role === "member" && !f.parentId ? ` (di ${f.owner.name})` : ""}
                 </option>
               ))}
             </select>

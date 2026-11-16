@@ -29,7 +29,8 @@ model User {
   exercises      Exercise[]
 
   googleAccount     GoogleAccount?
-  materialFolders   MaterialFolder[]
+  materialFolders   MaterialFolder[]       @relation("FolderOwner")
+  foldersCreated    MaterialFolder[]       @relation("FolderCreator")
   folderMemberships MaterialFolderMember[]
   invitesSent       FolderInvite[]
   notifications     Notification[]
@@ -359,13 +360,27 @@ model MaterialFolder {
   driveFolderId String
   isDefault     Boolean  @default(false) // "I miei esercizi"
   createdAt     DateTime @default(now())
+  // Sottocartelle: parentId è la cartella che la contiene, rootId la cartella principale
+  // (null per le cartelle principali). Si condivide solo la principale: membri e inviti
+  // stanno lì e valgono per tutto ciò che contiene. ownerId è sempre il proprietario
+  // della principale (tutto sta sul suo Drive); createdById chi ha creato la sottocartella.
+  parentId      String?
+  rootId        String?
+  createdById   String?
 
-  owner     User                   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  members   MaterialFolderMember[]
-  invites   FolderInvite[]
-  exercises Exercise[]
+  owner       User                   @relation("FolderOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  createdBy   User?                  @relation("FolderCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  parent      MaterialFolder?        @relation("FolderChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children    MaterialFolder[]       @relation("FolderChildren")
+  root        MaterialFolder?        @relation("FolderTree", fields: [rootId], references: [id], onDelete: Cascade)
+  descendants MaterialFolder[]       @relation("FolderTree")
+  members     MaterialFolderMember[]
+  invites     FolderInvite[]
+  exercises   Exercise[]
 
   @@index([ownerId])
+  @@index([parentId])
+  @@index([rootId])
 }
 
 model MaterialFolderMember {

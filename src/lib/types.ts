@@ -289,12 +289,28 @@ export type MaterialFolderDTO = {
   name: string;
   /** "I miei esercizi": la cartella personale, che non si elimina. */
   isDefault: boolean;
+  /** La cartella che la contiene; null per le cartelle principali. */
+  parentId: string | null;
+  /** La cartella principale; null se è lei la principale. */
+  rootId: string | null;
+  /** Rispetto alla cartella principale: proprietario o membro. */
   role: "owner" | "member";
   owner: PersonDTO;
+  /** Chi l'ha creata (per una sottocartella può essere un membro). */
+  createdBy: PersonDTO | null;
+  createdAt: string;
+  /** Rinominare ed eliminare: il proprietario, o chi ha creato la sottocartella. */
+  canManage: boolean;
+  /** Solo nelle cartelle principali: chi ha accesso (vale anche per le sottocartelle). */
   members: (PersonDTO & { joinedAt: string })[];
-  /** Inviti in attesa (li vede solo il proprietario). */
+  /** Inviti in attesa (li vede solo il proprietario, solo nelle cartelle principali). */
   invites: { id: string; email: string; createdAt: string }[];
+  /** File direttamente in questa cartella (senza le sottocartelle). */
   fileCount: number;
+  /** Byte dei file direttamente in questa cartella. */
+  bytes: number;
+  /** Quando è stato aggiunto l'ultimo file direttamente in questa cartella. */
+  lastFileAt: string | null;
   driveUrl: string;
 };
 
@@ -302,6 +318,15 @@ export type FoldersDTO = {
   folders: MaterialFolderDTO[];
   /** false se l'utente non ha autorizzato Google Drive (o l'ha revocato). */
   driveAuthorized: boolean;
+};
+
+/** Spazio occupato: i file di PianoStudio sul mio Drive e lo spazio del Drive intero. */
+export type StorageDTO = {
+  /** File di PianoStudio sul mio Drive (anche quelli caricati dai colleghi nelle mie cartelle). */
+  files: number;
+  bytes: number;
+  /** null se Drive non è autorizzato o non risponde. limit null = spazio illimitato. */
+  drive: { usage: number; limit: number | null } | null;
 };
 
 export type InviteDTO = {
