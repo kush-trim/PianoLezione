@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { connection } from "next/server";
 import { db } from "@/lib/db";
 import { getUser } from "@/lib/auth";
-import { buildAuthUrl, DRIVE_SCOPE, googleConfig, LOGIN_SCOPES, OAUTH_COOKIE, pkcePair, randomState, redirectUri, safeNext } from "@/lib/google-oauth";
+import { appUrl, buildAuthUrl, DRIVE_SCOPE, googleConfig, LOGIN_SCOPES, OAUTH_COOKIE, pkcePair, randomState, redirectUri, safeNext } from "@/lib/google-oauth";
 
 
 
@@ -12,7 +12,7 @@ export async function GET(req: Request) {
   await connection();
   const cfg = googleConfig();
   const url = new URL(req.url);
-  if (!cfg) return NextResponse.redirect(new URL("/login?errore=configurazione", req.url));
+  if (!cfg) return NextResponse.redirect(new URL("/login?errore=configurazione", appUrl(req)));
 
   const next = safeNext(url.searchParams.get("next"));
   const driveOnly = url.searchParams.get("drive") === "1";

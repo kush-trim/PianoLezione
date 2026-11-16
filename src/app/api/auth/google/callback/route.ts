@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { connection, NextResponse } from "next/server";
 import { signInWithGoogle } from "@/lib/google-account";
 import { finishLogin } from "@/lib/google-login";
-import { exchangeCode, fetchProfile, GoogleError, OAUTH_COOKIE, redirectUri, safeNext } from "@/lib/google-oauth";
+import { appUrl, exchangeCode, fetchProfile, GoogleError, OAUTH_COOKIE, redirectUri, safeNext } from "@/lib/google-oauth";
 
 // GET /api/auth/google/callback?code=…&state=… → ritorno da Google: accesso e sessione.
 export async function GET(req: Request) {
@@ -11,7 +11,9 @@ export async function GET(req: Request) {
   const store = await cookies();
   const raw = store.get(OAUTH_COOKIE)?.value;
   store.delete({ name: OAUTH_COOKIE, path: "/api/auth/google" });
-  const fail = (why: string) => NextResponse.redirect(new URL(`/login?errore=${why}`, req.url));
+  // Dietro il tunnel req.url ha l'indirizzo interno del server (localhost): si torna su APP_URL.
+  const base = appUrl(req);
+  const fail = (why: string) => NextResponse.redirect(new URL(`/login?errore=${why}`, base));
 
   let saved: { state: string; verifier: string; next: string } | null = null;
   try {
@@ -33,5 +35,5 @@ export async function GET(req: Request) {
     console.error("accesso con Google non riuscito:", e instanceof GoogleError ? e.message : e);
     return fail("google");
   }
-  return NextResponse.redirect(new URL(safeNext(saved.next), req.url));
+  return NextResponse.redirect(new URL(safeNext(saved.next), base));
 }
