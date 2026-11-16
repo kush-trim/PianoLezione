@@ -1,56 +1,115 @@
-// Esercizi (file: PDF, Word, Excel…) lato server.
+// Esercizi lato server. Il file si carica dal sito ma finisce su Google Drive, nella cartella
+// di esercizi scelta (sul Drive del suo proprietario). Nel database: nome, tipo, dimensione, link.
+// I file caricati sul sito prima di Drive (senza cartella, in ExerciseFile) restano leggibili
+// finché il proprietario non accede con Google: a quel punto vengono spostati su Drive.
 
 import { db } from "./db";
 import { EXERCISE_EXTENSIONS, fileTypeOf } from "./file-types";
+import { driveFor } from "./google-drive";
 import { ApiError, notFound } from "./http";
-import type { ExerciseDTO } from "./types";
+import { accessibleExercises, ensureDefaultFolder, folderAccess } from "./materials";
+import type { ExerciseDTO, ExerciseRef } from "./types";
 
 export const MAX_EXERCISE_BYTES = 15_000_000;
 
-const include = {
-  plans: {
-    include: { plan: { select: { id: true, title: true, date: true } } },
-    orderBy: { createdAt: "asc" },
-  },
+export const exerciseRefSelect = {
+  id: true,
+  title: true,
+  fileName: true,
+  size: true,
+  folderId: true,
+  webViewLink: true,
+  folder: { select: { name: true } },
 } as const;
 
-type Row = {
+type RefRow = {
   id: string;
   title: string;
   fileName: string;
   size: number;
-  note: string;
-  createdAt: Date;
-  plans: { plan: { id: string; title: string; date: string | null } }[];
+  folderId: string | null;
+  webViewLink: string | null;
+  folder: { name: string } | null;
 };
 
-export const toExerciseDTO = (e: Row): ExerciseDTO => ({
+export const toExerciseRef = (e: RefRow): ExerciseRef => ({
   id: e.id,
   title: e.title,
   fileName: e.fileName,
   size: e.size,
+  url: e.webViewLink ?? `/api/exercises/${e.id}/file`,
+  source: e.webViewLink ? "drive" : "upload",
+  folderId: e.folderId,
+  folderName: e.folder?.name ?? null,
+});
+
+const select = (viewerId: string) =>
+  ({
+    ...exerciseRefSelect,
+    userId: true,
+    note: true,
+    createdAt: true,
+    mimeType: true,
+    uploadedBy: { select: { id: true, name: true } },
+    // Solo i piani di chi guarda: i piani dei colleghi restano privati.
+    plans: {
+      where: { plan: { userId: viewerId } },
+      include: { plan: { select: { id: true, title: true, date: true } } },
+      orderBy: { createdAt: "asc" },
+    },
+  }) as const;
+
+type Row = RefRow & {
+  userId: string;
+  note: string;
+  createdAt: Date;
+  mimeType: string;
+  uploadedBy: { id: string; name: string } | null;
+  plans: { plan: { id: string; title: string; date: string | null } }[];
+};
+
+const toDTO = (viewerId: string, e: Row): ExerciseDTO => ({
+  ...toExerciseRef(e),
   note: e.note,
   createdAt: e.createdAt.toISOString(),
+  mimeType: e.mimeType,
+  uploadedBy: e.uploadedBy,
+  // Il proprietario della cartella (userId) o chi l'ha caricato.
+  canEdit: e.userId === viewerId || e.uploadedBy?.id === viewerId,
   plans: e.plans.map((p) => p.plan),
 });
 
-export async function listExercises(userId: string, q?: string): Promise<ExerciseDTO[]> {
+export async function listExercises(userId: string, opts: { q?: string; folderId?: string } = {}): Promise<ExerciseDTO[]> {
+  if (opts.folderId) await folderAccess(userId, opts.folderId);
   const rows = await db.exercise.findMany({
-    where: { userId, ...(q ? { OR: [{ title: { contains: q } }, { fileName: { contains: q } }] } : {}) },
+    where: {
+      AND: [
+        accessibleExercises(userId),
+        opts.folderId ? { folderId: opts.folderId } : {},
+        opts.q ? { OR: [{ title: { contains: opts.q } }, { fileName: { contains: opts.q } }, { note: { contains: opts.q } }] } : {},
+      ],
+    },
     orderBy: { createdAt: "desc" },
-    include,
+    select: select(userId),
   });
-  return rows.map(toExerciseDTO);
+  return rows.map((r) => toDTO(userId, r));
 }
 
 export async function getExercise(userId: string, id: string): Promise<ExerciseDTO> {
-  const row = await db.exercise.findFirst({ where: { id, userId }, include });
+  const row = await db.exercise.findFirst({ where: { AND: [{ id }, accessibleExercises(userId)] }, select: select(userId) });
   if (!row) throw notFound();
-  return toExerciseDTO(row);
+  return toDTO(userId, row);
 }
 
-/** Salva un file caricato; con planId lo collega subito a quel piano. */
-export async function createExercise(userId: string, file: File, title: string, planId?: string | null) {
+/** L'esercizio, se l'utente può modificarlo (proprietario della cartella o chi l'ha caricato). */
+export async function editableExercise(userId: string, id: string) {
+  const ex = await getExercise(userId, id);
+  if (!ex.canEdit) throw new ApiError(403, "Solo chi l'ha caricato o il proprietario della cartella può modificarlo");
+  return ex;
+}
+
+/** Controlla tipo e dimensione di un file caricato. */
+async function readUpload(file: File): Promise<{ data: Uint8Array; mime: string; name: string }> {
   const type = fileTypeOf(file.name);
   if (!type) {
     throw new ApiError(400, `"${file.name}": tipo di file non ammesso (ammessi: ${EXERCISE_EXTENSIONS.join(", ")})`);
@@ -61,18 +120,83 @@ export async function createExercise(userId: string, file: File, title: string, 
   if (type.kind === "pdf" && (data[0] !== 0x25 || data[1] !== 0x50 || data[2] !== 0x44 || data[3] !== 0x46)) {
     throw new ApiError(400, `"${file.name}" non è un PDF valido`);
   }
-  if (planId && !(await db.lessonPlan.count({ where: { id: planId, userId } }))) throw new ApiError(400, "Piano non valido");
-  const name = file.name.slice(0, 200);
-  const created = await db.exercise.create({
-    data: {
-      userId,
-      title: (title.trim() || name.replace(/\.[a-z0-9]+$/i, "")).slice(0, 200),
-      fileName: name,
-      mimeType: type.mime,
-      size: data.byteLength,
-      file: { create: { data } },
-      ...(planId ? { plans: { create: { planId } } } : {}),
-    },
-  });
-  return getExercise(userId, created.id);
+  return { data, mime: type.mime.split(";")[0], name: file.name.slice(0, 200) };
+}
+
+/**
+ * Carica i file su Google Drive, nella cartella indicata (o in "I miei esercizi").
+ * In una cartella condivisa il file va sul Drive del proprietario della cartella.
+ */
+export async function uploadExercises(
+  userId: string,
+  files: File[],
+  opts: { folderId?: string | null; title?: string; planId?: string | null },
+): Promise<ExerciseDTO[]> {
+  const folder = opts.folderId ? (await folderAccess(userId, opts.folderId)).folder : await ensureDefaultFolder(userId);
+  if (opts.planId && !(await db.lessonPlan.count({ where: { id: opts.planId, userId } }))) throw new ApiError(400, "Piano non valido");
+
+  // Prima si controllano tutti i file: o partono tutti, o nessuno.
+  const checked = await Promise.all(files.map(readUpload));
+  const drive = driveFor(folder.ownerId);
+  const out: ExerciseDTO[] = [];
+  for (const f of checked) {
+    const uploaded = await drive.upload(folder.driveFolderId, f.name, f.mime, f.data);
+    const title = (files.length === 1 && opts.title?.trim()) || f.name.replace(/\.[a-z0-9]+$/i, "");
+    const created = await db.exercise.create({
+      data: {
+        userId: folder.ownerId,
+        folderId: folder.id,
+        uploadedById: userId,
+        title: title.slice(0, 200),
+        fileName: f.name,
+        mimeType: f.mime,
+        size: uploaded.size,
+        driveFileId: uploaded.id,
+        webViewLink: uploaded.webViewLink,
+        ...(opts.planId ? { plans: { create: { planId: opts.planId } } } : {}),
+      },
+      select: { id: true },
+    });
+    out.push(await getExercise(userId, created.id));
+  }
+  return out;
+}
+
+/** Elimina: su Drive il file va nel cestino (recuperabile per 30 giorni). */
+export async function deleteExercise(userId: string, id: string) {
+  await editableExercise(userId, id);
+  const ex = await db.exercise.findUniqueOrThrow({ where: { id }, include: { folder: true } });
+  if (ex.driveFileId && ex.folder) {
+    try {
+      await driveFor(ex.folder.ownerId).trash(ex.driveFileId);
+    } catch (e) {
+      if (!(e instanceof ApiError && e.status === 404)) throw e; // già tolto su Drive
+    }
+  }
+  await db.exercise.delete({ where: { id } });
+}
+
+/**
+ * Sposta su Drive ("I miei esercizi") i file caricati sul sito prima di Drive.
+ * Si fa al primo accesso con Google; se Drive non risponde si riprova all'accesso successivo.
+ */
+export async function migrateLegacyExercises(userId: string): Promise<number> {
+  const legacy = await db.exercise.findMany({ where: { userId, folderId: null }, include: { file: true } });
+  if (!legacy.length) return 0;
+  const folder = await ensureDefaultFolder(userId);
+  const drive = driveFor(userId);
+  let moved = 0;
+  for (const ex of legacy) {
+    if (!ex.file) continue;
+    const uploaded = await drive.upload(folder.driveFolderId, ex.fileName, ex.mimeType.split(";")[0], new Uint8Array(ex.file.data));
+    await db.$transaction([
+      db.exercise.update({
+        where: { id: ex.id },
+        data: { folderId: folder.id, driveFileId: uploaded.id, webViewLink: uploaded.webViewLink, uploadedById: userId, size: uploaded.size },
+      }),
+      db.exerciseFile.delete({ where: { exerciseId: ex.id } }),
+    ]);
+    moved++;
+  }
+  return moved;
 }

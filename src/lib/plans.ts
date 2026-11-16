@@ -2,6 +2,7 @@
 
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "./db";
+import { exerciseRefSelect, toExerciseRef } from "./exercises";
 import { ApiError, notFound } from "./http";
 import { toMin } from "./schedule";
 import { objectivesText } from "./plan-utils";
@@ -11,7 +12,7 @@ const planInclude = {
   phases: { orderBy: { order: "asc" } },
   slots: { include: { slot: { include: { exceptions: true } } } },
   exercises: {
-    include: { exercise: { select: { id: true, title: true, fileName: true, size: true } } },
+    include: { exercise: { select: exerciseRefSelect } },
     orderBy: { createdAt: "asc" },
   },
 } satisfies Prisma.LessonPlanInclude;
@@ -109,7 +110,7 @@ export function toPlanDTO(p: PlanRow): PlanDTO {
     allegatiAuto: p.allegatiAuto,
     sezioniExtra: parseArray<SezioneExtra>(p.sezioniExtra),
     notaPost: p.notaPost,
-    exercises: p.exercises.map((e) => e.exercise),
+    exercises: p.exercises.map((e) => toExerciseRef(e.exercise)),
     isTemplate: p.isTemplate,
     slotIds: slots.map((s) => s.id),
     slots,

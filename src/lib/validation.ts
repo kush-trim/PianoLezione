@@ -8,17 +8,6 @@ const short = z.string().trim().max(200);
 export const COLORS = ["slate", "blue", "teal", "green", "amber", "orange", "rose", "violet"] as const;
 const color = z.enum(COLORS);
 
-export const registerSchema = z.object({
-  name: short.min(1, "inserisci il nome"),
-  email: z.string().trim().toLowerCase().pipe(z.email("email non valida")),
-  password: z.string().min(8, "la password deve avere almeno 8 caratteri").max(200),
-});
-
-export const loginSchema = z.object({
-  email: z.string().trim().toLowerCase(),
-  password: z.string(),
-});
-
 export const folderCreateSchema = z.object({
   name: short.min(1),
   parentId: z.string().nullable().optional(),
@@ -223,4 +212,14 @@ export const calendarApplySchema = z.object({
 export const exerciseUpdateSchema = z.object({
   title: short.min(1).optional(),
   note: z.string().trim().max(2000).optional(),
+});
+
+// --- Cartelle di esercizi (Google Drive) ---
+
+export const materialFolderSchema = z.object({
+  name: z.string().trim().min(1, "inserisci un nome").max(100),
+});
+
+export const inviteSchema = z.object({
+  email: z.string().trim().toLowerCase().pipe(z.email("email non valida")),
 });

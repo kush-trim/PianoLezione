@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { readJson, route } from "@/lib/http";
 import { assertOwned, getPlan, objectiveFields, phaseRows } from "@/lib/plans";
+import { accessibleExercises } from "@/lib/materials";
 import { planRestoreSchema } from "@/lib/validation";
 
 // Ricrea un piano appena eliminato (Annulla). Cartella e lezioni che non esistono più vengono lasciate vuote.
@@ -18,7 +19,7 @@ export const POST = route(async (req) => {
   await assertOwned(user.id, { folderId, slotIds });
 
   const validExercises = exerciseIds?.length
-    ? (await db.exercise.findMany({ where: { id: { in: exerciseIds }, userId: user.id }, select: { id: true } })).map((e) => e.id)
+    ? (await db.exercise.findMany({ where: { AND: [{ id: { in: exerciseIds } }, accessibleExercises(user.id)] }, select: { id: true } })).map((e) => e.id)
     : [];
   const plan = await db.lessonPlan.create({
     data: {

@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 // Controllo ottimistico: senza cookie di sessione si va al login.
 // La verifica vera della sessione avviene in ogni API (requireUser).
-const PUBLIC = ["/login", "/registrati"];
+const PUBLIC = ["/login", "/privacy"];
 
 export function proxy(req: NextRequest) {
   const hasSession = req.cookies.has("ps_session");

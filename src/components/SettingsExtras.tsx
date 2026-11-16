@@ -5,8 +5,8 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api, errorMessage } from "@/lib/api";
 import { humanDate } from "@/lib/plan-utils";
 import { ticinoCalendarUrl } from "@/lib/school-calendar";
-import type { ApiTokenDTO, CalendarImportDTO, HolidayDTO } from "@/lib/types";
-import { Button, cx, ErrorNote, Field, IconButton, Input, inputClass, useToast } from "./ui";
+import type { ApiTokenDTO, CalendarImportDTO, HolidayDTO, UserDTO } from "@/lib/types";
+import { Button, buttonClass, cx, ErrorNote, Field, IconButton, Input, inputClass, useToast } from "./ui";
 
 const range = (a: string, b: string) => (a === b ? humanDate(a) : `${humanDate(a, { year: false })} – ${humanDate(b)}`);
 
@@ -407,10 +407,35 @@ export function FeedLink() {
 
 export function Backup() {
   return (
-    <a href="/api/export" download>
-      <Button>
-        <Download className="size-4" /> Scarica i miei dati (JSON)
-      </Button>
+    <a href="/api/export" download className={buttonClass()}>
+      <Download className="size-4" /> Scarica i miei dati (JSON)
     </a>
+  );
+}
+
+/** Account Google con cui si accede, e stato del permesso per Google Drive. */
+export function GoogleAccountBox() {
+  const [me, setMe] = useState<UserDTO | null>(null);
+  useEffect(() => {
+    api.get<UserDTO>("/api/auth/me").then(setMe, () => {});
+  }, []);
+  if (!me) return null;
+  const g = me.google;
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <div className="min-w-0 flex-1">
+        <p className="font-medium">{g ? g.email : me.email}</p>
+        <p className={g?.driveAuthorized ? "text-[13px] text-ok" : "text-[13px] text-warn"}>
+          {g?.driveAuthorized
+            ? "Google Drive autorizzato: gli esercizi vanno nella cartella «PianoStudio» del tuo Drive."
+            : "Google Drive non autorizzato: non puoi caricare esercizi nelle tue cartelle."}
+        </p>
+      </div>
+      {!g?.driveAuthorized && (
+        <a href={`/api/auth/google?drive=1&next=${encodeURIComponent("/impostazioni")}`} className={buttonClass("primary")}>
+          Autorizza Google Drive
+        </a>
+      )}
+    </div>
   );
 }

@@ -1,5 +1,4 @@
 import { createHash, randomBytes } from "node:crypto";
-import bcrypt from "bcryptjs";
 import { cookies, headers } from "next/headers";
 import { db } from "./db";
 import { ApiError, currentMethod } from "./http";
@@ -8,9 +7,6 @@ export const SESSION_COOKIE = "ps_session";
 const SESSION_DAYS = 30;
 
 export const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
-
-export const hashPassword = (password: string) => bcrypt.hash(password, 11);
-export const verifyPassword = (password: string, hash: string) => bcrypt.compare(password, hash);
 
 export async function createSession(userId: string) {
   const token = randomBytes(32).toString("hex");

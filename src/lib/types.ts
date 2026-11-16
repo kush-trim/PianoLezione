@@ -96,7 +96,13 @@ export type VersionDTO = {
   totalMin: number;
 };
 
-export type UserDTO = { id: string; name: string; email: string };
+export type UserDTO = {
+  id: string;
+  name: string;
+  email: string;
+  /** L'account Google collegato e se Google Drive è autorizzato. */
+  google: { email: string; driveAuthorized: boolean } | null;
+};
 
 export type ExceptionDTO = {
   id: string;
@@ -251,11 +257,65 @@ export type CalendarImportDTO = {
   warnings: string[];
 };
 
-export type ExerciseRef = { id: string; title: string; fileName: string; size: number };
+export type ExerciseRef = {
+  id: string;
+  title: string;
+  fileName: string;
+  size: number;
+  /** Link per aprirlo: su Google Drive, oppure il file caricato sul sito prima di Drive. */
+  url: string;
+  /** "drive": su Google Drive; "upload": caricato sul sito prima del passaggio a Drive. */
+  source: "drive" | "upload";
+  folderId: string | null;
+  folderName: string | null;
+};
 
 export type ExerciseDTO = ExerciseRef & {
   note: string;
   createdAt: string;
-  /** I piani a cui è collegato (anche nessuno). */
+  mimeType: string;
+  /** Chi l'ha caricato (in una cartella condivisa può essere un collega). */
+  uploadedBy: { id: string; name: string } | null;
+  /** Può rinominarlo o eliminarlo: il proprietario della cartella o chi l'ha caricato. */
+  canEdit: boolean;
+  /** I miei piani a cui è collegato (anche nessuno). */
   plans: { id: string; title: string; date: string | null }[];
+};
+
+export type PersonDTO = { id: string; name: string; email: string };
+
+export type MaterialFolderDTO = {
+  id: string;
+  name: string;
+  /** "I miei esercizi": la cartella personale, che non si elimina. */
+  isDefault: boolean;
+  role: "owner" | "member";
+  owner: PersonDTO;
+  members: (PersonDTO & { joinedAt: string })[];
+  /** Inviti in attesa (li vede solo il proprietario). */
+  invites: { id: string; email: string; createdAt: string }[];
+  fileCount: number;
+  driveUrl: string;
+};
+
+export type FoldersDTO = {
+  folders: MaterialFolderDTO[];
+  /** false se l'utente non ha autorizzato Google Drive (o l'ha revocato). */
+  driveAuthorized: boolean;
+};
+
+export type InviteDTO = {
+  id: string;
+  folderName: string;
+  from: PersonDTO;
+  createdAt: string;
+};
+
+export type NotificationDTO = { id: string; type: string; text: string; createdAt: string; read: boolean };
+
+export type NotificationsDTO = {
+  invites: InviteDTO[];
+  items: NotificationDTO[];
+  /** Inviti in attesa + avvisi non letti. */
+  unread: number;
 };

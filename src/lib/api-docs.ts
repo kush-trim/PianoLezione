@@ -21,7 +21,29 @@ const tipi: Record<string, Fields | string> = {
   data: 'stringa "YYYY-MM-DD"',
   ora: 'stringa "HH:MM" (24 ore)',
   colore: '"slate" | "blue" | "teal" | "green" | "amber" | "orange" | "rose" | "violet"',
-  Utente: { id: "string", name: "string", email: "string" },
+  Utente: {
+    id: "string",
+    name: "string",
+    email: "string",
+    google: "{ email, driveAuthorized: boolean } | null — account Google e permesso per Google Drive",
+  },
+  Persona: { id: "string", name: "string", email: "string" },
+  CartellaEsercizi: {
+    id: "string",
+    name: "string",
+    isDefault: 'boolean — "I miei esercizi", che non si elimina',
+    role: '"owner" | "member"',
+    owner: "Persona",
+    members: "(Persona & { joinedAt })[] — chi ha accesso oltre al proprietario",
+    invites: "{ id, email, createdAt }[] — inviti in attesa (solo per il proprietario)",
+    fileCount: "numero",
+    driveUrl: "string — la cartella su Google Drive",
+  },
+  Notifiche: {
+    invites: "{ id, folderName, from: Persona, createdAt }[] — inviti in attesa indirizzati alla mia email Google",
+    items: "{ id, type, text, createdAt, read }[] — avvisi (invito accettato o rifiutato, rimosso da una cartella…)",
+    unread: "numero — inviti in attesa + avvisi non letti",
+  },
   Lezione: {
     id: "string",
     weekday: "numero 1–7 (1 = lunedì)",
@@ -57,14 +79,15 @@ const tipi: Record<string, Fields | string> = {
   Evento: {
     id: "string",
     title: "string",
-    date: "data",
-    startTime: "ora | null (null = tutto il giorno)",
+    date: "data — primo giorno",
+    endDate: "data | null — ultimo giorno (incluso) se dura più giorni",
+    startTime: "ora | null (null = tutto il giorno; con più giorni l'orario vale ogni giorno)",
     endTime: "ora | null",
     kind: '"gita" | "altro"',
     color: "colore",
     note: "string",
     className: 'string — classe coinvolta, "" = tutte',
-    cancelsLessons: "boolean — le lezioni della classe quel giorno (o in quegli orari) non si tengono",
+    cancelsLessons: "boolean — le lezioni della classe in quei giorni (o in quegli orari) non si tengono",
   },
   Obiettivo: { id: "string", verbo: "string — uno dei verbi dell'elenco", testo: "string" },
   Fase: {
@@ -128,9 +151,16 @@ const tipi: Record<string, Fields | string> = {
     title: "string",
     fileName: "string",
     size: "numero di byte",
+    url: "string — il file su Google Drive (oppure /api/exercises/:id/file per un file caricato prima di Drive)",
+    source: '"drive" | "upload"',
+    folderId: "string | null",
+    folderName: "string | null",
+    mimeType: "string",
     note: "string",
     createdAt: "data e ora ISO",
-    plans: "{ id, title, date }[] — piani collegati (anche nessuno)",
+    uploadedBy: "{ id, name } | null — chi l'ha caricato",
+    canEdit: "boolean — posso rinominarlo o eliminarlo (proprietario della cartella o chi l'ha caricato)",
+    plans: "{ id, title, date }[] — i miei piani a cui è collegato (anche nessuno)",
   },
   Token: {
     id: "string",
@@ -179,7 +209,8 @@ const lezioneCorpo: Fields = {
 
 const eventoCorpo: Fields = {
   title: "string",
-  date: "data",
+  date: "data — primo giorno",
+  "endDate?": "data | null — ultimo giorno, se dura più giorni",
   "startTime?": "ora | null",
   "endTime?": "ora | null, dopo startTime",
   "kind?": '"gita" | "altro" (predefinito altro)',
@@ -196,22 +227,28 @@ const ok = "{ ok: true }";
 const gruppi: Record<string, Endpoint[]> = {
   Autenticazione: [
     {
-      metodo: "POST",
-      percorso: "/api/auth/register",
-      descrizione: "Crea un account e apre la sessione. Crea anche fasi predefinite, verbi e anno scolastico iniziali.",
+      metodo: "GET",
+      percorso: "/api/auth/google",
+      descrizione:
+        "Accesso con Google (si apre nel browser, non con fetch): reindirizza a Google con OAuth 2.0 e PKCE. Al primo accesso nasce l'account (o si collega a uno esistente con la stessa email). Con drive=1 chiede solo il permesso per Google Drive.",
       autenticazione: false,
-      corpo: { name: "string", email: "string", password: "string, almeno 8 caratteri" },
-      risposta: "Utente (e il cookie di sessione)",
-      errori: { 400: "dati non validi", 409: "email già registrata" },
+      parametri: { "next?": "percorso del sito a cui tornare dopo l'accesso", "drive?": '"1" per autorizzare Google Drive' },
+      risposta: "reindirizzamento a Google",
+    },
+    {
+      metodo: "GET",
+      percorso: "/api/auth/google/callback",
+      descrizione: "Ritorno da Google: imposta il cookie di sessione e reindirizza a next. In caso di errore va a /login?errore=…",
+      autenticazione: false,
+      risposta: "reindirizzamento",
     },
     {
       metodo: "POST",
-      percorso: "/api/auth/login",
-      descrizione: "Apre la sessione.",
+      percorso: "/api/auth/dev-login",
+      descrizione: "Solo per le prove in locale (DEV_LOGIN=1, mai in produzione, dove risponde 404): accesso senza Google.",
       autenticazione: false,
-      corpo: { email: "string", password: "string" },
-      risposta: "Utente (e il cookie di sessione)",
-      errori: { 401: "email o password non corretti" },
+      corpo: { email: "string", "name?": "string", "drive?": "boolean (predefinito true)" },
+      risposta: "{ userId, created, linked }",
     },
     { metodo: "POST", percorso: "/api/auth/logout", descrizione: "Chiude la sessione.", autenticazione: false, risposta: ok },
     { metodo: "GET", percorso: "/api/auth/me", descrizione: "L'utente della sessione.", risposta: "Utente" },
@@ -340,7 +377,7 @@ const gruppi: Record<string, Endpoint[]> = {
   ],
 
   Eventi: [
-    { metodo: "POST", percorso: "/api/events", descrizione: "Aggiunge un evento di un giorno (gita, altro).", corpo: eventoCorpo, risposta: "Evento" },
+    { metodo: "POST", percorso: "/api/events", descrizione: "Aggiunge un evento di uno o più giorni (gita, settimana bianca, altro).", corpo: eventoCorpo, risposta: "Evento" },
     { metodo: "PUT", percorso: "/api/events/:id", descrizione: "Modifica un evento.", corpo: eventoCorpo, risposta: ok },
     { metodo: "DELETE", percorso: "/api/events/:id", descrizione: "Elimina un evento.", risposta: ok },
   ],
@@ -483,31 +520,85 @@ const gruppi: Record<string, Endpoint[]> = {
     {
       metodo: "GET",
       percorso: "/api/exercises",
-      descrizione: "Gli esercizi caricati, dal più recente, con i piani collegati.",
-      parametri: { "q?": "testo cercato in titolo e nome del file" },
+      descrizione: "Gli esercizi che posso vedere (mie cartelle e cartelle condivise con me), dal più recente.",
+      parametri: { "folderId?": "solo questa cartella", "q?": "testo cercato in titolo, nome del file e nota" },
       risposta: "Esercizio[]",
     },
     {
       metodo: "POST",
       percorso: "/api/exercises",
       descrizione:
-        "Carica uno o più file (multipart/form-data): PDF, Word, Excel, PowerPoint, OpenDocument, immagini, testo, GeoGebra, zip. Massimo 15 MB per file, 20 file per volta.",
-      corpo: { file: "uno o più file", "title?": "string (solo con un file)", "planId?": "string — li collega subito a questo piano" },
+        "Carica uno o più file (multipart/form-data) su Google Drive, nella cartella indicata: in una cartella condivisa il file va sul Drive del proprietario. PDF, Word, Excel, PowerPoint, OpenDocument, immagini, testo, GeoGebra, zip. Massimo 15 MB per file, 20 file per volta.",
+      corpo: {
+        file: "uno o più file",
+        "folderId?": 'string — cartella di esercizi (predefinita: "I miei esercizi")',
+        "title?": "string (solo con un file)",
+        "planId?": "string — li collega subito a questo mio piano",
+      },
       risposta: "Esercizio[]",
-      errori: { 400: "tipo di file non ammesso, file troppo grande o PDF non valido" },
+      errori: {
+        400: "tipo di file non ammesso, file troppo grande o PDF non valido",
+        409: "Google Drive non autorizzato per il proprietario della cartella",
+      },
     },
     { metodo: "GET", percorso: "/api/exercises/:id", descrizione: "Un esercizio.", risposta: "Esercizio" },
-    { metodo: "PATCH", percorso: "/api/exercises/:id", descrizione: "Cambia titolo o nota.", corpo: { "title?": "string", "note?": "string" }, risposta: "Esercizio" },
-    { metodo: "DELETE", percorso: "/api/exercises/:id", descrizione: "Elimina l'esercizio e i suoi collegamenti (i piani restano).", risposta: ok },
+    { metodo: "PATCH", percorso: "/api/exercises/:id", descrizione: "Cambia titolo o nota (proprietario della cartella o chi l'ha caricato).", corpo: { "title?": "string", "note?": "string" }, risposta: "Esercizio" },
+    { metodo: "DELETE", percorso: "/api/exercises/:id", descrizione: "Elimina l'esercizio: su Google Drive va nel cestino, dai piani sparisce il collegamento (proprietario della cartella o chi l'ha caricato).", risposta: ok },
     {
       metodo: "GET",
       percorso: "/api/exercises/:id/file",
-      descrizione: "Il file. PDF, immagini e testo si aprono nel browser, gli altri formati si scaricano.",
-      parametri: { "download?": '"1" per scaricarlo sempre' },
-      risposta: "il file",
+      descrizione: "Apre il file: reindirizza a Google Drive; per un file caricato prima di Drive restituisce il file (PDF, immagini e testo nel browser, gli altri si scaricano).",
+      parametri: { "download?": '"1" per scaricarlo sempre (file caricati prima di Drive)' },
+      risposta: "reindirizzamento a Drive, oppure il file",
     },
     { metodo: "POST", percorso: "/api/exercises/:id/plans/:planId", descrizione: "Collega l'esercizio a un piano.", risposta: "Esercizio" },
     { metodo: "DELETE", percorso: "/api/exercises/:id/plans/:planId", descrizione: "Toglie il collegamento (il file resta).", risposta: "Esercizio" },
+  ],
+
+  "Cartelle di esercizi (Google Drive)": [
+    {
+      metodo: "GET",
+      percorso: "/api/material-folders",
+      descrizione: 'Le mie cartelle di esercizi e quelle condivise con me. "I miei esercizi" si crea da sola sul mio Drive.',
+      risposta: { folders: "CartellaEsercizi[]", driveAuthorized: "boolean — false se non ho autorizzato Google Drive" },
+    },
+    { metodo: "POST", percorso: "/api/material-folders", descrizione: "Nuova cartella sul mio Google Drive (dentro «PianoStudio»).", corpo: { name: "string" }, risposta: "{ id, name }" },
+    { metodo: "PATCH", percorso: "/api/material-folders/:id", descrizione: "Rinomina, anche su Drive. Solo il proprietario.", corpo: { name: "string" }, risposta: ok },
+    {
+      metodo: "DELETE",
+      percorso: "/api/material-folders/:id",
+      descrizione: "Elimina la cartella per tutti: su Drive va nel cestino con i file. Solo il proprietario; \"I miei esercizi\" non si elimina.",
+      risposta: ok,
+    },
+    {
+      metodo: "POST",
+      percorso: "/api/material-folders/:id/invites",
+      descrizione: "Invita un collega per email Google. Lo trova nelle sue Notifiche (se non è iscritto, al primo accesso). Solo il proprietario.",
+      corpo: { email: "string" },
+      risposta: "{ id, email, createdAt }",
+      errori: { 400: "email non valida o è la mia", 409: "ha già accesso, o c'è già un invito in attesa" },
+    },
+    { metodo: "DELETE", percorso: "/api/material-folders/:id/invites/:inviteId", descrizione: "Ritira un invito in attesa. Solo il proprietario.", risposta: ok },
+    {
+      metodo: "DELETE",
+      percorso: "/api/material-folders/:id/members/:userId",
+      descrizione:
+        "Il proprietario toglie un membro, oppure il membro esce (userId = sé stesso). La condivisione su Drive viene tolta e i file spariscono dai piani del membro.",
+      risposta: ok,
+    },
+  ],
+
+  "Inviti e notifiche": [
+    { metodo: "GET", percorso: "/api/notifications", descrizione: "Inviti in attesa e avvisi.", risposta: "Notifiche" },
+    { metodo: "POST", percorso: "/api/notifications/read", descrizione: "Segna come letti tutti gli avvisi.", risposta: ok },
+    {
+      metodo: "POST",
+      percorso: "/api/invites/:id/accept",
+      descrizione: "Accetta un invito indirizzato alla mia email Google: la cartella viene condivisa con me anche su Google Drive.",
+      risposta: "{ folderId }",
+      errori: { 404: "invito inesistente, già risposto o per un'altra email" },
+    },
+    { metodo: "POST", percorso: "/api/invites/:id/decline", descrizione: "Rifiuta un invito.", risposta: ok },
   ],
 
   "Fasi predefinite": [
@@ -654,12 +745,12 @@ export const apiDocs = {
   nome: "PianoStudio API",
   descrizione: "API del sito per creare i piani lezione. Tutte le richieste e le risposte sono in JSON, salvo dove indicato.",
   autenticazione: {
-    tipo: "cookie di sessione oppure token API",
-    cookie: "ps_session (httpOnly), impostato da /api/auth/register e /api/auth/login; dura 30 giorni",
+    tipo: "cookie di sessione (accesso con Google) oppure token API",
+    cookie: "ps_session (httpOnly), impostato dall'accesso con Google (/api/auth/google); dura 30 giorni",
     token:
       'Intestazione "Authorization: Bearer ps_…", con un token creato in Impostazioni → Accesso API. Ambito "read": solo GET; "write": tutte le operazioni. Con un token non si possono gestire token, chiavi AI, calendari collegati e impostazioni.',
     regola:
-      "Tutte le rotte richiedono la sessione o un token, tranne quelle con autenticazione: false. Ogni utente vede e modifica solo i propri dati: una risorsa altrui risponde 404.",
+      "Tutte le rotte richiedono la sessione o un token, tranne quelle con autenticazione: false. Ogni utente vede e modifica solo i propri dati, più le cartelle di esercizi condivise con lui: una risorsa altrui risponde 404.",
   },
   convenzioni: {
     corpo: 'Le richieste con corpo vogliono l\'intestazione "Content-Type: application/json". Nei campi, "?" dopo il nome significa facoltativo.',

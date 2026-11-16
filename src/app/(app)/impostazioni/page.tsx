@@ -2,7 +2,7 @@
 
 import { CalendarDays, Check, KeyRound, Plus, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { ApiTokens, Backup, CalendarImport, FeedLink } from "@/components/SettingsExtras";
+import { ApiTokens, Backup, CalendarImport, FeedLink, GoogleAccountBox } from "@/components/SettingsExtras";
 import { Button, cx, ErrorNote, Field, IconButton, Input, inputClass, Loading, PageHeader, useToast } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api";
 import { humanDate, SUBJECT } from "@/lib/plan-utils";
@@ -209,6 +209,10 @@ export default function ImpostazioniPage() {
       <PageHeader title="Impostazioni" subtitle="Le regole con cui l’app prepara lezioni e piani." />
 
       <div className="max-w-4xl space-y-5">
+        <Section title="Account Google" description="Accedi a PianoStudio con questo account Google. Gli esercizi che carichi vanno sul suo Google Drive.">
+          <GoogleAccountBox />
+        </Section>
+
         <Section title="Lezioni" description="Quanto dura un’ora di lezione e quante ore proporre per una nuova lezione o un nuovo piano.">
           <div className="flex flex-wrap items-end gap-5">
             <Field label="Un’ora di lezione dura" className="w-44">
@@ -440,7 +444,7 @@ export default function ImpostazioniPage() {
           <ApiTokens />
         </Section>
 
-        <Section title="Copia di sicurezza" description="Tutti i tuoi dati (piani, cartelle, orario, anni, vacanze, eventi, verbi) in un file JSON. Senza password, chiavi e PDF degli esercizi.">
+        <Section title="Copia di sicurezza" description="Tutti i tuoi dati (piani, cartelle, orario, anni, vacanze, eventi, verbi) in un file JSON. Senza token, chiavi e file degli esercizi (che sono su Google Drive).">
           <Backup />
         </Section>
       </div>

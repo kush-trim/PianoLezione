@@ -2,13 +2,17 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { fileTypeOf } from "@/lib/file-types";
 import { notFound, route } from "@/lib/http";
+import { accessibleExercises } from "@/lib/materials";
 
-// GET /api/exercises/:id/file → il file. PDF, immagini e testo si aprono nel browser,
-// gli altri (Word, Excel…) si scaricano; ?download=1 lo scarica sempre.
+// GET /api/exercises/:id/file → apre il file: su Google Drive (reindirizzamento) oppure, per i file
+// caricati sul sito prima di Drive, il file stesso. PDF, immagini e testo si aprono nel browser,
+// gli altri si scaricano; ?download=1 lo scarica sempre.
 export const GET = route<{ id: string }>(async (req, { id }) => {
   const user = await requireUser();
-  const ex = await db.exercise.findFirst({ where: { id, userId: user.id }, include: { file: true } });
-  if (!ex?.file) throw notFound();
+  const ex = await db.exercise.findFirst({ where: { AND: [{ id }, accessibleExercises(user.id)] }, include: { file: true } });
+  if (!ex) throw notFound();
+  if (ex.webViewLink) return Response.redirect(ex.webViewLink, 302);
+  if (!ex.file) throw notFound();
   const type = fileTypeOf(ex.fileName);
   const download = new URL(req.url).searchParams.get("download") === "1" || !type?.inline;
   const name = encodeURIComponent(ex.fileName);

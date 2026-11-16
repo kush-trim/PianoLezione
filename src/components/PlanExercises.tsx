@@ -4,8 +4,10 @@ import { File as FileGeneric, FileImage, FileSpreadsheet, FileText, FileType, Li
 import { useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "@/lib/api";
 import { EXERCISE_ACCEPT, kindOf, type FileKind } from "@/lib/file-types";
-import type { ExerciseDTO, ExerciseRef } from "@/lib/types";
+import type { ExerciseDTO, ExerciseRef, FoldersDTO } from "@/lib/types";
 import { Button, Dialog, EmptyState, IconButton, Input, Loading, useToast } from "./ui";
+
+const LAST_FOLDER = "pianostudio:cartella-esercizi";
 
 export const fileSize = (bytes: number) =>
   bytes < 1_000_000 ? `${Math.max(1, Math.round(bytes / 1000))} kB` : `${(bytes / 1_000_000).toFixed(1).replace(".", ",")} MB`;
@@ -33,11 +35,18 @@ export function FileIcon({ fileName, className = "size-4" }: { fileName: string;
   return <Icon className={`${className} shrink-0 ${COLORS[kind] ?? "text-muted"}`} aria-hidden />;
 }
 
-/** Carica uno o più file come esercizi; con planId li collega subito al piano. */
-export async function uploadExercises(files: FileList | File[], planId?: string): Promise<ExerciseDTO[]> {
+/**
+ * Carica uno o più file su Google Drive, nella cartella indicata (predefinita: "I miei esercizi");
+ * con planId li collega subito al piano.
+ */
+export async function uploadExercises(
+  files: FileList | File[],
+  opts: { folderId?: string | null; planId?: string } = {},
+): Promise<ExerciseDTO[]> {
   const form = new FormData();
   for (const f of Array.from(files)) form.append("file", f);
-  if (planId) form.set("planId", planId);
+  if (opts.folderId) form.set("folderId", opts.folderId);
+  if (opts.planId) form.set("planId", opts.planId);
   const res = await fetch("/api/exercises", { method: "POST", body: form });
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(data?.error ?? "Caricamento non riuscito");
@@ -76,7 +85,7 @@ function ExercisePicker({
         <Loading />
       ) : list.length === 0 ? (
         <EmptyState title={all.length ? "Nessun esercizio trovato" : "Nessun esercizio caricato"}>
-          {all.length ? "Prova con un'altra parola." : "Caricane uno con «Carica file»."}
+          {all.length ? "Prova con un'altra parola." : "Caricane uno con «Carica file»: va sul tuo Google Drive."}
         </EmptyState>
       ) : (
         <ul className="space-y-1.5">
@@ -91,7 +100,7 @@ function ExercisePicker({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{e.title}</span>
                   <span className="block truncate text-[13px] text-muted">
-                    {fileSize(e.size)} · {e.plans.length ? `in ${e.plans.length} ${e.plans.length === 1 ? "piano" : "piani"}` : "non ancora usato"}
+                    {[e.folderName, e.size ? fileSize(e.size) : null, e.plans.length ? `in ${e.plans.length} ${e.plans.length === 1 ? "piano" : "piani"}` : "non ancora usato"].filter(Boolean).join(" · ")}
                   </span>
                 </span>
               </button>
@@ -117,14 +126,39 @@ export function PlanExercises({
   const fileRef = useRef<HTMLInputElement>(null);
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [folders, setFolders] = useState<FoldersDTO | null>(null);
+  const [folderId, setFolderId] = useState<string>("");
+
+  // Le cartelle in cui caricare: le mie e quelle condivise con me. Si ricorda l'ultima usata.
+  useEffect(() => {
+    let stale = false;
+    api.get<FoldersDTO>("/api/material-folders").then(
+      (d) => {
+        if (stale) return;
+        setFolders(d);
+        let saved = "";
+        try {
+          saved = localStorage.getItem(LAST_FOLDER) ?? "";
+        } catch {}
+        setFolderId(d.folders.find((f) => f.id === saved)?.id ?? d.folders[0]?.id ?? "");
+      },
+      () => {},
+    );
+    return () => {
+      stale = true;
+    };
+  }, []);
 
   async function upload(files: FileList | null) {
     if (!files?.length) return;
     setBusy(true);
     try {
-      const created = await uploadExercises(files, planId);
+      const created = await uploadExercises(files, { folderId: folderId || null, planId });
       onChange([...exercises, ...created]);
-      toast(created.length === 1 ? "Esercizio caricato" : `${created.length} esercizi caricati`);
+      try {
+        if (folderId) localStorage.setItem(LAST_FOLDER, folderId);
+      } catch {}
+      toast(created.length === 1 ? "File caricato su Google Drive" : `${created.length} file caricati su Google Drive`);
     } catch (e) {
       toast(errorMessage(e), "error");
     }
@@ -167,7 +201,23 @@ export function PlanExercises({
           <Button size="sm" variant="ghost" onClick={() => setPicking(true)}>
             <Link2 className="size-3.5" /> Collega esistente
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => fileRef.current?.click()} loading={busy}>
+          {folders && folders.folders.length > 1 && (
+            <select
+              value={folderId}
+              onChange={(e) => setFolderId(e.target.value)}
+              aria-label="Cartella in cui caricare"
+              title="Cartella di Google Drive in cui caricare"
+              className="h-7 max-w-44 rounded-md border border-line-strong bg-surface px-1.5 text-[13px] text-muted"
+            >
+              {folders.folders.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                  {f.role === "member" ? ` (di ${f.owner.name})` : ""}
+                </option>
+              ))}
+            </select>
+          )}
+          <Button size="sm" variant="ghost" onClick={() => fileRef.current?.click()} loading={busy} disabled={!!folders && !folders.folders.length}>
             <Upload className="size-3.5" /> Carica file
           </Button>
           <input ref={fileRef} type="file" accept={EXERCISE_ACCEPT} multiple hidden onChange={(e) => upload(e.target.files)} />
@@ -175,17 +225,17 @@ export function PlanExercises({
       </div>
       {exercises.length === 0 ? (
         <p className="mt-1.5 rounded-md border border-dashed border-line-strong px-3 py-2 text-muted">
-          Nessun esercizio. Trascina qui un file (PDF, Word, Excel, PowerPoint, immagini…) o collegane uno già caricato.
+          Nessun esercizio. Trascina qui un file (PDF, Word, Excel, PowerPoint, immagini…): va su Google Drive. Oppure collegane uno già caricato, anche da una cartella condivisa.
         </p>
       ) : (
         <ul className="mt-1.5 divide-y divide-line rounded-md border border-line bg-surface">
           {exercises.map((e) => (
             <li key={e.id} className="flex items-center gap-3 px-3 py-2">
               <FileIcon fileName={e.fileName} />
-              <a href={`/api/exercises/${e.id}/file`} target="_blank" rel="noreferrer" className="min-w-0 flex-1 hover:underline">
+              <a href={e.url} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 hover:underline">
                 <span className="block truncate font-medium">{e.title}</span>
                 <span className="block truncate text-[13px] text-muted">
-                  {e.fileName} · {fileSize(e.size)}
+                  {[e.fileName, e.size ? fileSize(e.size) : null, e.folderName ? `in «${e.folderName}»` : null].filter(Boolean).join(" · ")}
                 </span>
               </a>
               <IconButton label={`Scollega ${e.title}`} onClick={() => unlink(e)}>

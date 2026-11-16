@@ -22,7 +22,6 @@
     "@prisma/client": "^7.10.1",
     "@react-pdf/renderer": "^4.9.0",
     "ai": "^7.0.166",
-    "bcryptjs": "^3.0.3",
     "dotenv": "^18.0.10",
     "lucide-react": "^1.71.0",
     "next": "16.4.6",

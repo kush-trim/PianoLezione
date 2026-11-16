@@ -10,7 +10,8 @@ datasource db {
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
-  passwordHash String
+  // Non più usata: si accede solo con Google. Resta per gli account nati prima.
+  passwordHash String?
   name         String
   createdAt    DateTime @default(now())
 
@@ -26,6 +27,13 @@ model User {
   events         Event[]
   apiTokens      ApiToken[]
   exercises      Exercise[]
+
+  googleAccount     GoogleAccount?
+  materialFolders   MaterialFolder[]
+  folderMemberships MaterialFolderMember[]
+  invitesSent       FolderInvite[]
+  notifications     Notification[]
+  uploadedExercises Exercise[]             @relation("ExerciseUploader")
 }
 
 model Session {
@@ -41,16 +49,16 @@ model Session {
 }
 
 model Folder {
-  id        String   @id @default(cuid())
-  userId    String
-  parentId  String?
-  name      String
-  color     String   @default("slate")
-  order     Int      @default(0)
+  id           String   @id @default(cuid())
+  userId       String
+  parentId     String?
+  name         String
+  color        String   @default("slate")
+  order        Int      @default(0)
   // Cartella creata per un anno scolastico ("Anno 2027/2028"): i piani copiati qui
   // dentro (anche in sottocartelle) vengono riportati in quell'anno.
   schoolYearId String?
-  createdAt DateTime @default(now())
+  createdAt    DateTime @default(now())
 
   user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   parent     Folder?      @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
@@ -113,8 +121,8 @@ model LessonPlan {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  folder   Folder?       @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder    Folder?        @relation(fields: [folderId], references: [id], onDelete: SetNull)
   phases    Phase[]
   slots     PlanSlot[]
   versions  PlanVersion[]
@@ -244,16 +252,16 @@ model LessonException {
 
 // Evento di un singolo giorno (gita, giornata speciale...).
 model Event {
-  id        String  @id @default(cuid())
-  userId    String
-  title     String
-  date      String // primo giorno
-  endDate   String? // ultimo giorno (incluso) se l'evento dura più giorni; vuoto = un giorno solo
-  startTime String? // senza orari = giornata intera; con più giorni l'orario vale ogni giorno
-  endTime   String?
-  kind      String  @default("altro") // "gita" | "altro"
-  color     String  @default("amber")
-  note      String  @default("")
+  id             String  @id @default(cuid())
+  userId         String
+  title          String
+  date           String // primo giorno
+  endDate        String? // ultimo giorno (incluso) se l'evento dura più giorni; vuoto = un giorno solo
+  startTime      String? // senza orari = giornata intera; con più giorni l'orario vale ogni giorno
+  endTime        String?
+  kind           String  @default("altro") // "gita" | "altro"
+  color          String  @default("amber")
+  note           String  @default("")
   // Classe coinvolta ("" = tutte) e se le sue lezioni in quei giorni (o in quegli orari) non si tengono.
   className      String  @default("")
   cancelsLessons Boolean @default(false)
@@ -283,20 +291,30 @@ model ApiToken {
 // Esercizio caricato come file (PDF, Word, Excel, PowerPoint, immagini…). Si collega a zero, uno o più piani (e un piano a zero o più esercizi).
 // Il file sta nel database: il deploy conserva solo la cartella data/ con il database.
 model Exercise {
-  id        String   @id @default(cuid())
-  userId    String
-  title     String
-  fileName  String
-  mimeType  String   @default("application/pdf")
-  size      Int
-  note      String   @default("")
-  createdAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  userId       String
+  title        String
+  fileName     String
+  mimeType     String   @default("application/pdf")
+  size         Int
+  note         String   @default("")
+  createdAt    DateTime @default(now())
+  // Su Google Drive: la cartella di esercizi, il file su Drive e chi l'ha caricato.
+  // userId è il proprietario della cartella (sul suo Drive c'è il file).
+  // Senza folderId è un file caricato sul sito prima di Drive, salvato in ExerciseFile.
+  folderId     String?
+  driveFileId  String?
+  webViewLink  String?
+  uploadedById String?
 
-  user  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  file  ExerciseFile?
-  plans PlanExercise[]
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folder     MaterialFolder? @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  uploadedBy User?           @relation("ExerciseUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  file       ExerciseFile?
+  plans      PlanExercise[]
 
   @@index([userId])
+  @@index([folderId])
 }
 
 // Il contenuto del file, a parte: gli elenchi non lo caricano mai.
@@ -317,4 +335,79 @@ model PlanExercise {
 
   @@id([planId, exerciseId])
   @@index([exerciseId])
+}
+
+// L'account Google con cui l'utente accede. Il refresh token serve per usare Drive
+// anche quando l'utente non è collegato (es. un collega carica nella sua cartella condivisa).
+model GoogleAccount {
+  userId          String   @id
+  sub             String   @unique // id stabile dell'account Google
+  email           String
+  refreshTokenEnc String   @default("") // cifrato con APP_SECRET
+  scopes          String   @default("") // permessi concessi, separati da spazio
+  driveRootId     String? // cartella "PianoStudio" sul suo Drive
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Cartella di esercizi: una cartella sul Google Drive del proprietario, condivisibile.
+model MaterialFolder {
+  id            String   @id @default(cuid())
+  ownerId       String
+  name          String
+  driveFolderId String
+  isDefault     Boolean  @default(false) // "I miei esercizi"
+  createdAt     DateTime @default(now())
+
+  owner     User                   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  members   MaterialFolderMember[]
+  invites   FolderInvite[]
+  exercises Exercise[]
+
+  @@index([ownerId])
+}
+
+model MaterialFolderMember {
+  folderId          String
+  userId            String
+  drivePermissionId String   @default("")
+  joinedAt          DateTime @default(now())
+
+  folder MaterialFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([folderId, userId])
+  @@index([userId])
+}
+
+model FolderInvite {
+  id          String    @id @default(cuid())
+  folderId    String
+  inviterId   String
+  email       String // email Google invitata, minuscola
+  status      String    @default("pending") // "pending" | "accepted" | "declined" | "revoked"
+  createdAt   DateTime  @default(now())
+  respondedAt DateTime?
+
+  folder  MaterialFolder @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  inviter User           @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+
+  @@index([email, status])
+  @@index([folderId])
+}
+
+// Avvisi per l'utente (es. "X ha accettato il tuo invito"). Gli inviti in attesa si leggono
+// direttamente da FolderInvite.
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String
+  data      String    @default("{}") // JSON
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }

@@ -33,6 +33,16 @@ const VARIANTS = {
   danger: "text-danger hover:bg-danger-soft",
 };
 
+/** Aspetto di un pulsante, anche per un link (<a>) che non deve contenere un <button>. */
+export const buttonClass = (variant: ButtonProps["variant"] = "secondary", size: ButtonProps["size"] = "md", className?: string) =>
+  cx(
+    "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md font-medium whitespace-nowrap transition-colors",
+    "disabled:cursor-not-allowed disabled:opacity-50",
+    size === "sm" ? "h-7 px-2 text-[13px]" : "h-9 px-3",
+    VARIANTS[variant],
+    className,
+  );
+
 export function Button({
   variant = "secondary",
   size = "md",
@@ -47,13 +57,7 @@ export function Button({
     <button
       type={type}
       disabled={disabled || loading}
-      className={cx(
-        "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md font-medium whitespace-nowrap transition-colors",
-        "disabled:cursor-not-allowed disabled:opacity-50",
-        size === "sm" ? "h-7 px-2 text-[13px]" : "h-9 px-3",
-        VARIANTS[variant],
-        className,
-      )}
+      className={buttonClass(variant, size, className)}
       {...rest}
     >
       {loading && <Loader2 className="size-4 animate-spin" aria-hidden />}
@@ -192,7 +196,9 @@ export function Dialog({
   return (
     <dialog
       ref={ref}
-      onClose={onClose}
+      // L'evento "close" arriva dopo: se nel frattempo la finestra è stata riaperta (React in
+      // sviluppo monta due volte una finestra che nasce già aperta) non va considerato.
+      onClose={() => !ref.current?.open && onClose()}
       onClick={(e) => e.target === ref.current && onClose()}
       className={cx(
         "m-auto w-[calc(100vw-2rem)] rounded-xl border border-line bg-surface p-0 text-ink shadow-xl backdrop:bg-ink/40",
