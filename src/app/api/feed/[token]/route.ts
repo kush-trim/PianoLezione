@@ -1,6 +1,6 @@
 import { userFromApiToken } from "@/lib/auth";
 import { schoolOccurrences } from "@/lib/calendar";
-import { loadCalendarRange } from "@/lib/calendar-data";
+import { loadCalendarRange, eventsTouching } from "@/lib/calendar-data";
 import { db } from "@/lib/db";
 import { notFound, route } from "@/lib/http";
 import { toIcal, type FeedEvent } from "@/lib/ical-export";
@@ -23,7 +23,7 @@ export const GET = route<{ token: string }>(async (_req, { token }) => {
   const [slots, exceptions, events, plans, range] = await Promise.all([
     db.timetableSlot.findMany({ where: { userId } }).then((s) => s.map(toSlotDTO)),
     db.lessonException.findMany({ where: { slot: { userId }, date: { gte: from, lte: to } } }).then((e) => e.map(toExceptionDTO)),
-    db.event.findMany({ where: { userId, date: { gte: from, lte: to } }, omit: { userId: true } }) as Promise<EventDTO[]>,
+    db.event.findMany({ where: eventsTouching(userId, from, to), omit: { userId: true } }) as Promise<EventDTO[]>,
     listPlans(userId, { isTemplate: false, date: { gte: from, lte: to } }),
     loadCalendarRange(userId, settings, from, to),
   ]);
@@ -47,7 +47,15 @@ export const GET = route<{ token: string }>(async (_req, { token }) => {
     }
   }
   for (const e of events) {
-    out.push({ uid: `${e.id}@pianostudio`, title: e.title, date: e.date, startTime: e.startTime, endTime: e.endTime, description: e.note || undefined });
+    const description = e.note || undefined;
+    if (e.startTime && e.endTime && e.endDate) {
+      // Con orario su più giorni: un evento per giorno, a quell'orario.
+      for (let d = e.date; d <= e.endDate; d = addDays(d, 1)) {
+        out.push({ uid: `${e.id}-${d}@pianostudio`, title: e.title, date: d, startTime: e.startTime, endTime: e.endTime, description });
+      }
+    } else {
+      out.push({ uid: `${e.id}@pianostudio`, title: e.title, date: e.date, lastDate: e.endDate ?? undefined, startTime: e.startTime, endTime: e.endTime, description });
+    }
   }
   // Vacanze: un solo evento per ogni periodo continuo con lo stesso nome.
   let period: FeedEvent | null = null;

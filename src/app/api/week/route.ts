@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { yearFor, yearWeeks } from "@/lib/calendar";
-import { loadCalendarRange } from "@/lib/calendar-data";
+import { loadCalendarRange, eventsTouching } from "@/lib/calendar-data";
 import { db } from "@/lib/db";
 import { route } from "@/lib/http";
 import { addDays, mondayOf, today } from "@/lib/plan-utils";
@@ -32,7 +32,7 @@ export const GET = route(async (req): Promise<WeekDTO> => {
     }),
     db.lessonException.findMany({ where: { slot: { userId: user.id }, date: { gte: from, lte: to } } }),
     db.event.findMany({
-      where: { userId: user.id, date: { gte: from, lte: to } },
+      where: eventsTouching(user.id, from, to),
       orderBy: [{ date: "asc" }, { startTime: "asc" }],
       omit: { userId: true },
     }),

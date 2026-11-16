@@ -165,14 +165,33 @@ function EventFields({ draft, set, classes }: { draft: EventDraft; set: (d: Even
         <Input value={draft.title} onChange={(e) => set({ ...draft, title: e.target.value })} required autoFocus placeholder="es. Gita al museo" />
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Tipo">
+        <Field label="Tipo" className="col-span-2">
           <select className={inputClass} value={draft.kind} onChange={(e) => set({ ...draft, kind: e.target.value as EventDTO["kind"] })}>
             <option value="gita">Gita / uscita</option>
             <option value="altro">Altro</option>
           </select>
         </Field>
-        <Field label="Giorno">
-          <Input type="date" value={draft.date} required onChange={(e) => e.target.value && set({ ...draft, date: e.target.value })} />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Dal">
+          <Input
+            type="date"
+            value={draft.date}
+            required
+            onChange={(e) => {
+              const date = e.target.value;
+              // Spostando l'inizio oltre la fine, l'evento torna di un giorno solo.
+              if (date) set({ ...draft, date, endDate: draft.endDate && draft.endDate > date ? draft.endDate : null });
+            }}
+          />
+        </Field>
+        <Field label="Al" hint="Solo se dura più giorni">
+          <Input
+            type="date"
+            value={draft.endDate ?? ""}
+            min={draft.date}
+            onChange={(e) => set({ ...draft, endDate: e.target.value && e.target.value > draft.date ? e.target.value : null })}
+          />
         </Field>
       </div>
       <label className="flex items-center gap-2">
@@ -182,8 +201,9 @@ function EventFields({ draft, set, classes }: { draft: EventDraft; set: (d: Even
           checked={allDay}
           onChange={(e) => set({ ...draft, startTime: e.target.checked ? null : "08:00", endTime: e.target.checked ? null : "12:00" })}
         />
-        Tutto il giorno
+        {draft.endDate ? "Tutti i giorni interi" : "Tutto il giorno"}
       </label>
+      {!allDay && draft.endDate && <p className="text-[13px] text-muted">L’orario vale per ogni giorno dell’evento.</p>}
       {!allDay && (
         <div className="grid grid-cols-2 gap-3">
           <Field label="Inizio">
@@ -217,7 +237,8 @@ function EventFields({ draft, set, classes }: { draft: EventDraft; set: (d: Even
         <span>
           Le lezioni {draft.className.trim() ? `della ${draft.className.trim()}` : "di tutte le classi"} non si tengono
           <span className="block text-muted">
-            {allDay ? "Per tutto il giorno" : "Solo quelle negli orari dell'evento"}: spariscono dalla settimana e non contano tra le lezioni rimaste.
+            {allDay ? (draft.endDate ? "Per tutti i giorni dell'evento" : "Per tutto il giorno") : "Solo quelle negli orari dell'evento"}: spariscono dalla settimana e non contano tra le lezioni rimaste.
+            {draft.endDate && " Le settimane restano numerate: se non devono contare (es. settimana bianca come vacanza), inseriscile come vacanza nelle Impostazioni."}
           </span>
         </span>
       </label>
@@ -287,7 +308,7 @@ function AddForm({
     color: lastSlot?.color ?? "teal",
   });
   const [event, setEvent] = useState<EventDraft>({
-    title: "", date: at.date, startTime: null, endTime: null, kind: "gita", color: "amber", note: "",
+    title: "", date: at.date, endDate: null, startTime: null, endTime: null, kind: "gita", color: "amber", note: "",
     className: "", cancelsLessons: false,
   });
   const [past, setPast] = useState(false);

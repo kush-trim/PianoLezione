@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { remainingByClass, yearFor, yearWeeks } from "@/lib/calendar";
-import { loadCalendarRange } from "@/lib/calendar-data";
+import { loadCalendarRange, eventsTouching } from "@/lib/calendar-data";
 import { db } from "@/lib/db";
 import { route } from "@/lib/http";
 import { mondayOf, today } from "@/lib/plan-utils";
@@ -37,7 +37,7 @@ export const GET = route(async (req): Promise<RemainingDTO> => {
     }),
     db.lessonException.findMany({ where: { slot: { userId: user.id }, date: { gte: year.startDate, lte: year.endDate } } }),
     db.event.findMany({
-      where: { userId: user.id, cancelsLessons: true, date: { gte: year.startDate, lte: year.endDate } },
+      where: { ...eventsTouching(user.id, year.startDate, year.endDate), cancelsLessons: true },
       omit: { userId: true },
     }),
     listPlans(user.id, { isTemplate: false, date: { gte: from, lte: year.endDate } }),

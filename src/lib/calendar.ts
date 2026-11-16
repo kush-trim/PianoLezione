@@ -33,7 +33,12 @@ export function occurrencesOn(date: string, slots: SlotDTO[], exceptions: Except
     .sort((a, b) => toMin(a.startTime) - toMin(b.startTime));
 }
 
-type CancellingEvent = Pick<EventDTO, "date" | "startTime" | "endTime" | "className" | "cancelsLessons" | "title">;
+type CancellingEvent = Pick<EventDTO, "date" | "endDate" | "startTime" | "endTime" | "className" | "cancelsLessons" | "title">;
+
+/** L'evento cade in quel giorno? Un evento può durare più giorni (estremi inclusi). */
+export function eventOn(e: { date: string; endDate?: string | null }, date: string): boolean {
+  return date >= e.date && date <= (e.endDate ?? e.date);
+}
 
 const sameClass = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
@@ -43,7 +48,7 @@ export function cancellingEvent<E extends CancellingEvent>(occ: Occurrence, even
     events.find(
       (e) =>
         e.cancelsLessons &&
-        e.date === occ.date &&
+        eventOn(e, occ.date) &&
         (!e.className.trim() || sameClass(e.className, occ.slot.className)) &&
         // Giornata intera, oppure orari che si sovrappongono alla lezione.
         (!e.startTime || !e.endTime || (e.startTime < occ.endTime && e.endTime > occ.startTime)),

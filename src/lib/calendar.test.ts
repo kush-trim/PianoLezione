@@ -167,7 +167,7 @@ describe("cifratura", () => {
 });
 
 describe("lezioni che si tengono davvero", () => {
-  const gita = { title: "Gita", date: "2026-11-17", startTime: null, endTime: null, className: "3A", cancelsLessons: true };
+  const gita = { title: "Gita", date: "2026-11-17", endDate: null, startTime: null, endTime: null, className: "3A", cancelsLessons: true };
 
   it("nei giorni di vacanza non ci sono lezioni", () => {
     expect(schoolOccurrences("2026-11-17", [slot()], [], new Set(["2026-11-17"]))).toEqual([]);

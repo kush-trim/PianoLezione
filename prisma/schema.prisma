@@ -247,13 +247,14 @@ model Event {
   id        String  @id @default(cuid())
   userId    String
   title     String
-  date      String
-  startTime String? // senza orari = giornata intera
+  date      String // primo giorno
+  endDate   String? // ultimo giorno (incluso) se l'evento dura più giorni; vuoto = un giorno solo
+  startTime String? // senza orari = giornata intera; con più giorni l'orario vale ogni giorno
   endTime   String?
   kind      String  @default("altro") // "gita" | "altro"
   color     String  @default("amber")
   note      String  @default("")
-  // Classe coinvolta ("" = tutte) e se le sue lezioni quel giorno (o in quegli orari) non si tengono.
+  // Classe coinvolta ("" = tutte) e se le sue lezioni in quei giorni (o in quegli orari) non si tengono.
   className      String  @default("")
   cancelsLessons Boolean @default(false)
 

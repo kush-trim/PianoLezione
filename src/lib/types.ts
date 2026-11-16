@@ -124,7 +124,10 @@ export type Occurrence = {
 export type EventDTO = {
   id: string;
   title: string;
+  /** Primo giorno. */
   date: string;
+  /** Ultimo giorno (incluso) se l'evento dura più giorni; null = un giorno solo. */
+  endDate: string | null;
   startTime: string | null;
   endTime: string | null;
   kind: "gita" | "altro";
@@ -132,7 +135,7 @@ export type EventDTO = {
   note: string;
   /** Classe coinvolta ("" = tutte). */
   className: string;
-  /** Le lezioni della classe quel giorno (o in quegli orari) non si tengono. */
+  /** Le lezioni della classe in quei giorni (o in quegli orari) non si tengono. */
   cancelsLessons: boolean;
 };
 

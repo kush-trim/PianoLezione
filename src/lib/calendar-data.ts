@@ -51,3 +51,12 @@ export async function loadCalendarRange(
   const unique = holidays.filter((h) => (seen.has(h.date) ? false : (seen.add(h.date), true)));
   return { holidays: unique.sort((a, b) => a.date.localeCompare(b.date)), external, errors };
 }
+
+/** Filtro per gli eventi che toccano l'intervallo [from, to], anche se iniziano prima. */
+export function eventsTouching(userId: string, from: string, to: string) {
+  return {
+    userId,
+    date: { lte: to },
+    OR: [{ endDate: null, date: { gte: from } }, { endDate: { gte: from } }],
+  };
+}

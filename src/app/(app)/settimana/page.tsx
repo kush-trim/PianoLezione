@@ -10,7 +10,7 @@ import { AddDialog, EventDialog, LessonPanel } from "@/components/WeekDialogs";
 import { WeekGrid, type DayColumn, type GridBlock } from "@/components/WeekGrid";
 import { YearStrip, type YearData } from "@/components/YearStrip";
 import { api, errorMessage } from "@/lib/api";
-import { schoolOccurrences } from "@/lib/calendar";
+import { schoolOccurrences, eventOn } from "@/lib/calendar";
 import { swatch } from "@/lib/colors";
 import { addDays, consecutiveSlots, humanDate, mondayOf, parseDate, today, WEEKDAYS } from "@/lib/plan-utils";
 import type { EventDTO, Occurrence, PlanDTO, WeekDTO } from "@/lib/types";
@@ -137,7 +137,7 @@ export default function SettimanaPage() {
   const days: DayColumn[] = week.days.map((date, i) => {
     const holiday = week.holidays.find((h) => h.date === date);
     const allDay = [
-      ...events.filter((e) => e.date === date && !e.startTime),
+      ...events.filter((e) => eventOn(e, date) && !e.startTime),
       ...week.external.filter((e) => e.date === date && !e.startTime),
     ];
     return {
@@ -215,11 +215,13 @@ export default function SettimanaPage() {
         ),
       };
     }),
+    // Un evento con orario che dura più giorni compare ogni giorno a quell'orario.
     ...events
       .filter((e) => e.startTime && e.endTime)
-      .map((e): GridBlock => ({
-        key: `e-${e.id}`,
-        weekday: week.days.indexOf(e.date) + 1,
+      .flatMap((e) => week.days.filter((d) => eventOn(e, d)).map((d) => ({ e, d })))
+      .map(({ e, d }): GridBlock => ({
+        key: `e-${e.id}-${d}`,
+        weekday: week.days.indexOf(d) + 1,
         start: e.startTime!,
         end: e.endTime!,
         color: e.color,

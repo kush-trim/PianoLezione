@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { occurrencesOn, yearWeeks } from "@/lib/calendar";
-import { loadCalendarRange } from "@/lib/calendar-data";
+import { loadCalendarRange, eventsTouching } from "@/lib/calendar-data";
 import { db } from "@/lib/db";
 import { readJson, route } from "@/lib/http";
 import { addDays, mondayOf } from "@/lib/plan-utils";
@@ -55,7 +55,7 @@ export const POST = route(async (req): Promise<ProposalDTO | null> => {
     loadCalendarRange(user.id, settings, year.startDate, year.endDate),
     db.lessonException.findMany({ where: { slot: { userId: user.id }, date: { gte: year.startDate, lte: year.endDate } } }),
     db.event.findMany({
-      where: { userId: user.id, cancelsLessons: true, date: { gte: year.startDate, lte: year.endDate } },
+      where: { ...eventsTouching(user.id, year.startDate, year.endDate), cancelsLessons: true },
       omit: { userId: true },
     }),
     listPlans(user.id, { isTemplate: false, date: { gte: year.startDate, lte: year.endDate }, id: { notIn: ids } }),

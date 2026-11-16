@@ -40,7 +40,7 @@ export function weeksWithLessons(
   slots: SlotDTO[],
   exceptions: ExceptionDTO[],
   holidays: Set<string>,
-  events: Pick<EventDTO, "date" | "startTime" | "endTime" | "className" | "cancelsLessons" | "title">[],
+  events: Pick<EventDTO, "date" | "endDate" | "startTime" | "endTime" | "className" | "cancelsLessons" | "title">[],
   taken: Set<string>,
 ): WeekLessons[] {
   return weeks

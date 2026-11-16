@@ -145,6 +145,7 @@ export const eventSchema = z
   .object({
     title: short.min(1, "inserisci un titolo"),
     date,
+    endDate: date.nullable().optional(),
     startTime: time.nullable().optional(),
     endTime: time.nullable().optional(),
     kind: z.enum(["gita", "altro"]).default("altro"),
@@ -153,7 +154,10 @@ export const eventSchema = z
     className: short.default(""),
     cancelsLessons: z.boolean().default(false),
   })
-  .refine((e) => !e.startTime || !e.endTime || e.endTime > e.startTime, "la fine deve essere dopo l'inizio");
+  .refine((e) => !e.startTime || !e.endTime || e.endTime > e.startTime, "la fine deve essere dopo l'inizio")
+  .refine((e) => !e.endDate || e.endDate >= e.date, "l'ultimo giorno non può essere prima del primo")
+  // Un evento di un giorno solo si salva senza endDate.
+  .transform((e) => ({ ...e, endDate: e.endDate && e.endDate > e.date ? e.endDate : null }));
 
 // Modifica o chiusura di una lezione ricorrente "da questa settimana in poi".
 export const slotSplitSchema = z.object({ from: date, slot: slotSchema });
