@@ -253,7 +253,7 @@ function EventFields({ draft, set, classes }: { draft: EventDraft; set: (d: Even
   );
 }
 
-// --- Aggiunta: lezione ricorrente oppure evento di un giorno ---
+// --- Aggiunta: lezione ricorrente oppure evento (di uno o più giorni) ---
 
 export function AddDialog({
   at,
@@ -331,7 +331,7 @@ function AddForm({
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <Tabs value={tab} onChange={setTab} options={[["lesson", "Lezione ricorrente"], ["event", "Evento di un giorno"]]} />
+      <Tabs value={tab} onChange={setTab} options={[["lesson", "Lezione ricorrente"], ["event", "Evento"]]} />
       {tab === "lesson" ? (
         <>
           <SlotFields draft={slot} set={setSlot} lessonMinutes={settings.lessonMinutes} />
