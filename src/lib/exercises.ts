@@ -8,7 +8,8 @@ import { EXERCISE_EXTENSIONS, fileTypeOf } from "./file-types";
 import { driveFor } from "./google-drive";
 import { ApiError, notFound } from "./http";
 import { accessibleExercises, ensureDefaultFolder, folderAccess } from "./materials";
-import type { ExerciseDTO, ExerciseRef } from "./types";
+import { normalizeTags, parseTags, sortTags, tagKey } from "./tags";
+import type { ExerciseDTO, ExerciseRef, TagCountDTO } from "./types";
 
 export const MAX_EXERCISE_BYTES = 15_000_000;
 
@@ -19,6 +20,7 @@ export const exerciseRefSelect = {
   size: true,
   folderId: true,
   webViewLink: true,
+  tags: true,
   folder: { select: { name: true } },
 } as const;
 
@@ -29,6 +31,7 @@ type RefRow = {
   size: number;
   folderId: string | null;
   webViewLink: string | null;
+  tags: string;
   folder: { name: string } | null;
 };
 
@@ -41,6 +44,7 @@ export const toExerciseRef = (e: RefRow): ExerciseRef => ({
   source: e.webViewLink ? "drive" : "upload",
   folderId: e.folderId,
   folderName: e.folder?.name ?? null,
+  tags: sortTags(parseTags(e.tags)),
 });
 
 const select = (viewerId: string) =>
@@ -50,6 +54,8 @@ const select = (viewerId: string) =>
     note: true,
     createdAt: true,
     mimeType: true,
+    copiedFrom: true,
+    user: { select: { id: true, name: true } },
     uploadedBy: { select: { id: true, name: true } },
     // Solo i piani di chi guarda: i piani dei colleghi restano privati.
     plans: {
@@ -64,6 +70,8 @@ type Row = RefRow & {
   note: string;
   createdAt: Date;
   mimeType: string;
+  copiedFrom: string | null;
+  user: { id: string; name: string };
   uploadedBy: { id: string; name: string } | null;
   plans: { plan: { id: string; title: string; date: string | null } }[];
 };
@@ -74,25 +82,56 @@ const toDTO = (viewerId: string, e: Row): ExerciseDTO => ({
   createdAt: e.createdAt.toISOString(),
   mimeType: e.mimeType,
   uploadedBy: e.uploadedBy,
+  owner: e.user,
+  copiedFrom: e.copiedFrom,
   // Il proprietario della cartella (userId) o chi l'ha caricato.
   canEdit: e.userId === viewerId || e.uploadedBy?.id === viewerId,
   plans: e.plans.map((p) => p.plan),
 });
 
-export async function listExercises(userId: string, opts: { q?: string; folderId?: string } = {}): Promise<ExerciseDTO[]> {
+export async function listExercises(userId: string, opts: { q?: string; folderId?: string; tag?: string } = {}): Promise<ExerciseDTO[]> {
   if (opts.folderId) await folderAccess(userId, opts.folderId);
   const rows = await db.exercise.findMany({
     where: {
       AND: [
         accessibleExercises(userId),
         opts.folderId ? { folderId: opts.folderId } : {},
-        opts.q ? { OR: [{ title: { contains: opts.q } }, { fileName: { contains: opts.q } }, { note: { contains: opts.q } }] } : {},
+        opts.q
+          ? { OR: [{ title: { contains: opts.q } }, { fileName: { contains: opts.q } }, { note: { contains: opts.q } }, { tags: { contains: opts.q } }] }
+          : {},
+        // Prima scrematura nel database; il controllo esatto si fa qui sotto.
+        opts.tag ? { tags: { contains: opts.tag } } : {},
       ],
     },
     orderBy: { createdAt: "desc" },
     select: select(userId),
   });
-  return rows.map((r) => toDTO(userId, r));
+  const out = rows.map((r) => toDTO(userId, r));
+  return opts.tag ? out.filter((e) => e.tags.some((t) => tagKey(t) === tagKey(opts.tag!))) : out;
+}
+
+/** Le etichette usate negli esercizi che l'utente vede, con quanti file le hanno. */
+export async function tagCounts(userId: string): Promise<TagCountDTO[]> {
+  const rows = await db.exercise.findMany({ where: { AND: [accessibleExercises(userId), { NOT: { tags: "[]" } }] }, select: { tags: true } });
+  const counts = new Map<string, { tag: string; count: number }>();
+  for (const r of rows) {
+    for (const t of parseTags(r.tags)) {
+      const c = counts.get(tagKey(t)) ?? { tag: t, count: 0 };
+      c.count++;
+      counts.set(tagKey(t), c);
+    }
+  }
+  const sorted = sortTags([...counts.values()].map((c) => c.tag));
+  return sorted.map((t) => counts.get(tagKey(t))!);
+}
+
+/**
+ * Cambia le etichette. Le può mettere chiunque veda il file (anche un collega in una cartella
+ * condivisa, che su Drive ha comunque il permesso di modifica); titolo e nota no.
+ */
+export async function setTags(userId: string, id: string, tags: string[]) {
+  await getExercise(userId, id);
+  await db.exercise.update({ where: { id }, data: { tags: JSON.stringify(normalizeTags(tags)) } });
 }
 
 export async function getExercise(userId: string, id: string): Promise<ExerciseDTO> {
@@ -130,7 +169,7 @@ async function readUpload(file: File): Promise<{ data: Uint8Array; mime: string;
 export async function uploadExercises(
   userId: string,
   files: File[],
-  opts: { folderId?: string | null; title?: string; planId?: string | null },
+  opts: { folderId?: string | null; title?: string; planId?: string | null; tags?: string[] },
 ): Promise<ExerciseDTO[]> {
   const folder = opts.folderId ? (await folderAccess(userId, opts.folderId)).folder : await ensureDefaultFolder(userId);
   if (opts.planId && !(await db.lessonPlan.count({ where: { id: opts.planId, userId } }))) throw new ApiError(400, "Piano non valido");
@@ -153,6 +192,7 @@ export async function uploadExercises(
         size: uploaded.size,
         driveFileId: uploaded.id,
         webViewLink: uploaded.webViewLink,
+        tags: JSON.stringify(normalizeTags(opts.tags ?? [])),
         ...(opts.planId ? { plans: { create: { planId: opts.planId } } } : {}),
       },
       select: { id: true },

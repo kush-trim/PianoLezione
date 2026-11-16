@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { deleteExercise, editableExercise, getExercise, moveExercise } from "@/lib/exercises";
+import { deleteExercise, editableExercise, getExercise, moveExercise, setTags } from "@/lib/exercises";
 import { readJson, route } from "@/lib/http";
 import { exerciseUpdateSchema } from "@/lib/validation";
 
@@ -12,10 +12,12 @@ export const GET = route<P>(async (_req, { id }) => {
 });
 
 // Nome, nota e cartella (spostamento): solo per chi l'ha caricato o per il proprietario della cartella.
+// Le etichette: chiunque veda il file.
 export const PATCH = route<P>(async (req, { id }) => {
   const user = await requireUser();
-  const { folderId, ...data } = exerciseUpdateSchema.parse(await readJson(req));
-  await editableExercise(user.id, id);
+  const { folderId, tags, ...data } = exerciseUpdateSchema.parse(await readJson(req));
+  if (folderId || Object.keys(data).length) await editableExercise(user.id, id);
+  if (tags) await setTags(user.id, id, tags);
   if (folderId) await moveExercise(user.id, id, folderId);
   if (Object.keys(data).length) await db.exercise.update({ where: { id }, data });
   return getExercise(user.id, id);

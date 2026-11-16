@@ -2,6 +2,7 @@
 
 import {
   ChevronRight,
+  Copy,
   ExternalLink,
   FileText,
   Folder,
@@ -14,6 +15,7 @@ import {
   Pencil,
   Search,
   Share2,
+  Tag,
   Trash2,
   TriangleAlert,
   Upload,
@@ -24,12 +26,14 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { FileIcon, fileSize, uploadExercises } from "@/components/PlanExercises";
 import { ShareDialog } from "@/components/ShareDialog";
+import { TagChip, TagEditor, TagList } from "@/components/Tags";
 import { Button, buttonClass, cx, Dialog, EmptyState, ErrorNote, Field, IconButton, Input, Loading, useToast } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api";
-import { EXERCISE_ACCEPT } from "@/lib/file-types";
+import { EXERCISE_ACCEPT, extensionOf } from "@/lib/file-types";
 import { childrenOf, flattenTree, folderLabel, folderTotals, pathOf } from "@/lib/folder-tree";
 import { humanDate } from "@/lib/plan-utils";
-import type { ExerciseDTO, FoldersDTO, MaterialFolderDTO, PlanSummary, StorageDTO, UserDTO } from "@/lib/types";
+import { sortTags, tagKey } from "@/lib/tags";
+import type { ExerciseDTO, FolderCopyDTO, FoldersDTO, MaterialFolderDTO, PlanSummary, StorageDTO, TagCountDTO, UserDTO } from "@/lib/types";
 
 const LAST_FOLDER = "pianostudio:cartella-esercizi";
 
@@ -208,7 +212,12 @@ function StorageBox({ storage }: { storage: StorageDTO | null }) {
               aria-label={`Google Drive: usati ${fileSize(d.usage)} di ${fileSize(d.limit)}, di cui ${fileSize(storage.bytes)} da PianoStudio`}
             >
               {/* Anche pochi kB restano visibili. */}
-              <span className="bg-accent" style={{ width: storage.bytes ? `max(3px, ${pct(storage.bytes)})` : 0 }} />
+              <span
+                className="bg-accent"
+                style={{
+                  width: storage.bytes ? `max(3px, ${pct(storage.bytes)})` : 0,
+                }}
+              />
               <span className="bg-line-strong" style={{ width: pct(Math.max(0, d.usage - storage.bytes)) }} />
             </div>
           )}
@@ -250,13 +259,7 @@ function FolderInfo({ folder, all, meId, onClose }: { folder: MaterialFolderDTO 
           {folder.createdBy && folder.createdBy.id !== folder.owner.id && ` da ${who(folder.createdBy)}`}
         </InfoRow>
         <InfoRow label="Condivisa con">
-          {root.isDefault ? (
-            "Nessuno: è la tua cartella personale"
-          ) : root.members.length ? (
-            root.members.map((m) => who(m)).join(", ")
-          ) : (
-            "Nessuno"
-          )}
+          {root.isDefault ? "Nessuno: è la tua cartella personale" : root.members.length ? root.members.map((m) => who(m)).join(", ") : "Nessuno"}
           {folder.rootId && !root.isDefault && <span className="block text-[13px] text-muted">Come la cartella principale «{root.name}».</span>}
           {root.role === "owner" && root.invites.length > 0 && (
             <span className="block text-[13px] text-muted">{plural(root.invites.length, "invito", "inviti")} in attesa</span>
@@ -320,8 +323,8 @@ function MoveDialog({
   return (
     <Dialog open={!!exercise} onClose={onClose} title={`Sposta «${exercise?.title ?? ""}»`}>
       <p className="mb-3 text-[13px] text-muted">
-        Si sposta anche su Google Drive. Le cartelle sono quelle dello stesso Drive{from && from.role === "member" ? ` (di ${from.owner.name})` : ""}.
-        Se il file esce da una cartella condivisa, sparisce dai piani dei colleghi che non lo vedono più.
+        Si sposta anche su Google Drive. Le cartelle sono quelle dello stesso Drive{from && from.role === "member" ? ` (di ${from.owner.name})` : ""}. Se il file esce da
+        una cartella condivisa, sparisce dai piani dei colleghi che non lo vedono più.
       </p>
       <ul className="max-h-[50vh] space-y-0.5 overflow-y-auto">
         {tree.map(({ folder: f, depth }) => {
@@ -347,6 +350,165 @@ function MoveDialog({
   );
 }
 
+const dateTime = (iso: string) =>
+  new Date(iso).toLocaleString("it-CH", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+/** Le informazioni di un file: cosa è, dove sta, chi l'ha caricato e quando, dove è usato. */
+function FileInfo({ file, all, meId, onClose }: { file: ExerciseDTO | null; all: MaterialFolderDTO[]; meId: string; onClose: () => void }) {
+  if (!file) return null;
+  const who = (p: { id: string; name: string } | null) => (p ? (p.id === meId ? `${p.name} (tu)` : p.name) : "—");
+  const ext = extensionOf(file.fileName).toUpperCase();
+  return (
+    <Dialog open onClose={onClose} title={`Informazioni su «${file.title}»`}>
+      <dl className="divide-y divide-line text-[14px]">
+        <InfoRow label="File">
+          {file.fileName}
+          <span className="block text-[13px] text-muted">{[ext || null, file.size ? fileSize(file.size) : null].filter(Boolean).join(" · ")}</span>
+        </InfoRow>
+        <InfoRow label="Cartella">{file.folderId ? `PianoStudio / ${folderLabel(all, file.folderId) || file.folderName}` : "—"}</InfoRow>
+        <InfoRow label="Caricato da">
+          {who(file.uploadedBy)}
+          <span className="block text-[13px] text-muted">{dateTime(file.createdAt)}</span>
+        </InfoRow>
+        {file.copiedFrom && <InfoRow label="Copiato da">la cartella {file.copiedFrom}</InfoRow>}
+        <InfoRow label="Sul Drive di">{who(file.owner)}</InfoRow>
+        <InfoRow label="Etichette">{file.tags.length ? <TagList tags={file.tags} /> : "Nessuna"}</InfoRow>
+        {file.note && <InfoRow label="Nota">{file.note}</InfoRow>}
+        <InfoRow label="Nei tuoi piani">
+          {file.plans.length ? (
+            <ul className="space-y-0.5">
+              {file.plans.map((p) => (
+                <li key={p.id}>
+                  <Link href={`/piani/${p.id}`} className="text-accent hover:underline">
+                    {p.title || "Senza titolo"}
+                  </Link>
+                  {p.date && <span className="text-muted"> · {humanDate(p.date)}</span>}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            "In nessuno"
+          )}
+        </InfoRow>
+        <InfoRow label="Google Drive">
+          <a href={file.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
+            Apri il file <ExternalLink className="size-3.5" />
+          </a>
+        </InfoRow>
+      </dl>
+    </Dialog>
+  );
+}
+
+/** Etichette di un file: le può cambiare chiunque veda il file. */
+function TagDialog({ file, onClose, onSaved }: { file: ExerciseDTO | null; onClose: () => void; onSaved: () => void }) {
+  const toast = useToast();
+  const [tags, setTags] = useState<string[]>(file?.tags ?? []);
+  const [used, setUsed] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api.get<TagCountDTO[]>("/api/exercises/tags").then(
+      (t) => setUsed(t.map((x) => x.tag)),
+      () => {},
+    );
+  }, []);
+  if (!file) return null;
+
+  async function save() {
+    setBusy(true);
+    try {
+      await api.patch(`/api/exercises/${file!.id}`, { tags });
+      onSaved();
+    } catch (e) {
+      toast(errorMessage(e), "error");
+    }
+    setBusy(false);
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`Etichette di «${file.title}»`}
+      footer={
+        <>
+          <Button onClick={onClose}>Annulla</Button>
+          <Button variant="primary" onClick={save} loading={busy}>
+            Salva
+          </Button>
+        </>
+      }
+    >
+      <TagEditor value={tags} onChange={setTags} used={used} />
+      <p className="mt-3 text-[13px] text-muted">Le etichette le vede chiunque abbia accesso al file.</p>
+    </Dialog>
+  );
+}
+
+/** Copia una cartella (con sottocartelle e file) sul mio Drive, come nuova cartella tra le mie. */
+function CopyDialog({
+  folder,
+  all,
+  onClose,
+  onCopied,
+}: {
+  folder: MaterialFolderDTO | null;
+  all: MaterialFolderDTO[];
+  onClose: () => void;
+  onCopied: (r: FolderCopyDTO) => void;
+}) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  if (!folder) return null;
+  const t = folderTotals(all, folder.id);
+
+  async function copy() {
+    setBusy(true);
+    try {
+      onCopied(await api.post<FolderCopyDTO>(`/api/material-folders/${folder!.id}/copy`));
+    } catch (e) {
+      toast(errorMessage(e), "error");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={() => !busy && onClose()}
+      title={`Copia «${folder.name}» nel tuo Drive`}
+      footer={
+        <>
+          <Button onClick={onClose} disabled={busy}>
+            Annulla
+          </Button>
+          <Button variant="primary" onClick={copy} loading={busy}>
+            <Copy className="size-4" /> Copia
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3 text-[14px]">
+        <p>
+          Nasce una nuova cartella «{folder.name}» tra <span className="font-medium">le tue cartelle</span>, sul tuo Google Drive, con{" "}
+          {t.files || t.subfolders ? contentSummary(t) : "nulla dentro: la cartella è vuota"}.
+        </p>
+        <p className="text-[13px] text-muted">
+          La copia è tua: resta anche se {folder.role === "member" ? `${folder.owner.name} cambia o elimina l'originale` : "cambi o elimini l'originale"}. Si copiano
+          titoli, note ed etichette; i collegamenti ai piani no.
+        </p>
+        {busy && <p className="text-[13px] text-muted">Copia in corso… con molti file può volerci qualche minuto.</p>}
+      </div>
+    </Dialog>
+  );
+}
+
 export default function EserciziPage() {
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -360,7 +522,11 @@ export default function EserciziPage() {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const [naming, setNaming] = useState<{ id?: string; parentId?: string; name: string } | null>(null);
+  const [naming, setNaming] = useState<{
+    id?: string;
+    parentId?: string;
+    name: string;
+  } | null>(null);
   const [nameError, setNameError] = useState("");
   const [sharing, setSharing] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
@@ -369,6 +535,11 @@ export default function EserciziPage() {
   const [editError, setEditError] = useState("");
   const [linking, setLinking] = useState<ExerciseDTO | null>(null);
   const [moving, setMoving] = useState<ExerciseDTO | null>(null);
+  const [tagging, setTagging] = useState<ExerciseDTO | null>(null);
+  const [fileInfo, setFileInfo] = useState<ExerciseDTO | null>(null);
+  const [copying, setCopying] = useState<MaterialFolderDTO | null>(null);
+  // Filtro per etichetta sui file mostrati (cartella o risultati della ricerca).
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
 
   const loadFolders = useCallback(
     () =>
@@ -415,6 +586,7 @@ export default function EserciziPage() {
   function select(id: string) {
     setSelected(id);
     setQuery("");
+    setTagFilter(null);
     // La cartella e quelle che la contengono si riaprono, anche se erano state chiuse a mano.
     if (data) {
       const path = pathOf(data.folders, id);
@@ -448,7 +620,10 @@ export default function EserciziPage() {
     if (!naming) return;
     setNameError("");
     try {
-      if (naming.id) await api.patch(`/api/material-folders/${naming.id}`, { name: naming.name });
+      if (naming.id)
+        await api.patch(`/api/material-folders/${naming.id}`, {
+          name: naming.name,
+        });
       else {
         const created = await api.post<{ id: string }>("/api/material-folders", { name: naming.name, parentId: naming.parentId ?? null });
         await loadFolders();
@@ -500,8 +675,7 @@ export default function EserciziPage() {
     }
   }
 
-  const unlink = (x: ExerciseDTO, planId: string) =>
-    api.del(`/api/exercises/${x.id}/plans/${planId}`).then(loadItems, (e) => toast(errorMessage(e), "error"));
+  const unlink = (x: ExerciseDTO, planId: string) => api.del(`/api/exercises/${x.id}/plans/${planId}`).then(loadItems, (e) => toast(errorMessage(e), "error"));
 
   if (!data || !me) return <Loading />;
 
@@ -517,6 +691,19 @@ export default function EserciziPage() {
   const mine = all.filter((f) => !f.parentId && f.role === "owner");
   const shared = all.filter((f) => !f.parentId && f.role === "member");
   const authorize = `/api/auth/google?drive=1&next=${encodeURIComponent("/esercizi")}`;
+
+  // Le etichette dei file mostrati, con quanti file le hanno; il filtro tiene solo quei file.
+  const tagCounts = new Map<string, { tag: string; n: number }>();
+  for (const x of items ?? []) {
+    for (const t of x.tags)
+      tagCounts.set(tagKey(t), {
+        tag: t,
+        n: (tagCounts.get(tagKey(t))?.n ?? 0) + 1,
+      });
+  }
+  const visibleTags = sortTags([...tagCounts.values()].map((c) => c.tag));
+  const activeFilter = tagFilter && tagCounts.has(tagKey(tagFilter)) ? tagFilter : null;
+  const shown = (items ?? []).filter((x) => !activeFilter || x.tags.some((t) => tagKey(t) === tagKey(activeFilter)));
 
   const shareText = (r: MaterialFolderDTO) =>
     r.role === "member" ? `Condivisa da ${r.owner.name}` : r.members.length ? `Condivisa con ${r.members.map((m) => m.name).join(", ")}` : "Solo tua";
@@ -552,8 +739,8 @@ export default function EserciziPage() {
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg bg-warn-soft px-3 py-2.5 text-[13px] text-warn">
           <TriangleAlert className="size-4 shrink-0" aria-hidden />
           <span className="flex-1">
-            Google Drive non è autorizzato per il tuo account: non puoi creare cartelle né caricare nelle tue. Le cartelle che i colleghi
-            condividono con te funzionano lo stesso.
+            Google Drive non è autorizzato per il tuo account: non puoi creare cartelle né caricare nelle tue. Le cartelle che i colleghi condividono con te funzionano lo
+            stesso.
           </span>
           <a href={authorize} className={buttonClass("primary", "sm")}>
             <HardDrive className="size-3.5" /> Autorizza Google Drive
@@ -623,10 +810,7 @@ export default function EserciziPage() {
                   <p className="text-[13px] text-muted">
                     {root.isDefault ? "Solo tua" : shareText(root)}
                     {folder.rootId && !root.isDefault && ` · come «${root.name}»`}
-                    {root.role === "owner" &&
-                      !folder.rootId &&
-                      root.invites.length > 0 &&
-                      ` · ${plural(root.invites.length, "invito", "inviti")} in attesa`}
+                    {root.role === "owner" && !folder.rootId && root.invites.length > 0 && ` · ${plural(root.invites.length, "invito", "inviti")} in attesa`}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -637,6 +821,15 @@ export default function EserciziPage() {
                     <Button size="sm" variant="ghost" onClick={() => setSharing(true)}>
                       <Share2 className="size-3.5" /> {root.role === "owner" ? "Condividi" : "Chi ha accesso"}
                     </Button>
+                  )}
+                  {folder.role === "member" ? (
+                    <Button size="sm" variant="ghost" onClick={() => setCopying(folder)} disabled={!data.driveAuthorized}>
+                      <Copy className="size-3.5" /> Copia nel mio Drive
+                    </Button>
+                  ) : (
+                    <IconButton label={`Copia ${folder.name} (duplica)`} onClick={() => setCopying(folder)} disabled={!data.driveAuthorized}>
+                      <Copy className="size-4" />
+                    </IconButton>
                   )}
                   <IconButton label={`Informazioni su ${folder.name}`} onClick={() => setShowInfo(true)}>
                     <Info className="size-4" />
@@ -675,9 +868,7 @@ export default function EserciziPage() {
             )
           )}
           {folder?.isDefault && !q && !subfolders.length && (
-            <p className="mb-3 text-[13px] text-muted">
-              Per condividere esercizi con un collega crea una cartella con «Nuova cartella» e usa «Condividi».
-            </p>
+            <p className="mb-3 text-[13px] text-muted">Per condividere esercizi con un collega crea una cartella con «Nuova cartella» e usa «Condividi».</p>
           )}
 
           {subfolders.length > 0 && (
@@ -695,6 +886,39 @@ export default function EserciziPage() {
                 </li>
               ))}
             </ul>
+          )}
+
+          {visibleTags.length > 0 && (
+            <div className="mb-2 flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtra per etichetta">
+              <button
+                type="button"
+                onClick={() => setTagFilter(null)}
+                aria-pressed={!activeFilter}
+                className={cx(
+                  "rounded-full border px-2.5 py-0.5 text-[13px]",
+                  !activeFilter ? "border-ink bg-ink font-medium text-paper" : "border-line-strong text-muted hover:text-ink",
+                )}
+              >
+                Tutti · {items?.length ?? 0}
+              </button>
+              {visibleTags.map((t) => {
+                const on = !!activeFilter && tagKey(activeFilter) === tagKey(t);
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTagFilter(on ? null : t)}
+                    aria-pressed={on}
+                    className={cx(
+                      "rounded-full transition-opacity",
+                      on ? "ring-2 ring-ink ring-offset-1 ring-offset-paper" : activeFilter && "opacity-60 hover:opacity-100",
+                    )}
+                  >
+                    <TagChip tag={t} label={`${t} · ${tagCounts.get(tagKey(t))!.n}`} />
+                  </button>
+                );
+              })}
+            </div>
           )}
 
           {!items ? (
@@ -721,7 +945,7 @@ export default function EserciziPage() {
             )
           ) : (
             <ul className="divide-y divide-line rounded-xl border border-line bg-surface">
-              {items.map((x) => (
+              {shown.map((x) => (
                 <li key={x.id} className="flex flex-wrap items-start gap-3 px-3 py-2.5">
                   <FileIcon fileName={x.fileName} className="mt-0.5 size-5" />
                   <div className="min-w-0 flex-1">
@@ -739,6 +963,11 @@ export default function EserciziPage() {
                         .filter(Boolean)
                         .join(" · ")}
                     </p>
+                    {x.tags.length > 0 && (
+                      <div className="mt-1">
+                        <TagList tags={x.tags} />
+                      </div>
+                    )}
                     {x.note && <p className="mt-0.5 text-[13px]">{x.note}</p>}
                     <div className="mt-1.5 flex flex-wrap gap-1.5">
                       {x.plans.map((p) => (
@@ -766,28 +995,37 @@ export default function EserciziPage() {
                       </button>
                     </div>
                   </div>
-                  {x.canEdit && (
-                    <div className="flex shrink-0 gap-0.5">
-                      {x.folderId && (
-                        <IconButton label={`Sposta ${x.title}`} onClick={() => setMoving(x)}>
-                          <FolderInput className="size-4" />
+                  {/* Sul telefono i pulsanti vanno sotto, per lasciare spazio al nome. */}
+                  <div className="flex shrink-0 gap-0.5 max-sm:w-full max-sm:pl-8">
+                    <IconButton label={`Informazioni su ${x.title}`} onClick={() => setFileInfo(x)}>
+                      <Info className="size-4" />
+                    </IconButton>
+                    <IconButton label={`Etichette di ${x.title}`} onClick={() => setTagging(x)}>
+                      <Tag className="size-4" />
+                    </IconButton>
+                    {x.canEdit && (
+                      <>
+                        {x.folderId && (
+                          <IconButton label={`Sposta ${x.title}`} onClick={() => setMoving(x)}>
+                            <FolderInput className="size-4" />
+                          </IconButton>
+                        )}
+                        <IconButton
+                          label={`Modifica ${x.title}`}
+                          onClick={() => {
+                            setEditing(x);
+                            setDraft({ title: x.title, note: x.note });
+                            setEditError("");
+                          }}
+                        >
+                          <Pencil className="size-4" />
                         </IconButton>
-                      )}
-                      <IconButton
-                        label={`Modifica ${x.title}`}
-                        onClick={() => {
-                          setEditing(x);
-                          setDraft({ title: x.title, note: x.note });
-                          setEditError("");
-                        }}
-                      >
-                        <Pencil className="size-4" />
-                      </IconButton>
-                      <IconButton label={`Elimina ${x.title}`} className="hover:bg-danger-soft hover:text-danger" onClick={() => remove(x)}>
-                        <Trash2 className="size-4" />
-                      </IconButton>
-                    </div>
-                  )}
+                        <IconButton label={`Elimina ${x.title}`} className="hover:bg-danger-soft hover:text-danger" onClick={() => remove(x)}>
+                          <Trash2 className="size-4" />
+                        </IconButton>
+                      </>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -798,7 +1036,9 @@ export default function EserciziPage() {
       <Dialog
         open={!!naming}
         onClose={() => setNaming(null)}
-        title={naming?.id ? "Rinomina cartella" : naming?.parentId ? `Nuova sottocartella in «${all.find((f) => f.id === naming.parentId)?.name ?? ""}»` : "Nuova cartella"}
+        title={
+          naming?.id ? "Rinomina cartella" : naming?.parentId ? `Nuova sottocartella in «${all.find((f) => f.id === naming.parentId)?.name ?? ""}»` : "Nuova cartella"
+        }
       >
         {naming && (
           <form onSubmit={saveFolder} className="space-y-4">
@@ -858,6 +1098,40 @@ export default function EserciziPage() {
       )}
 
       {showInfo && <FolderInfo folder={folder} all={all} meId={me.id} onClose={() => setShowInfo(false)} />}
+
+      {fileInfo && <FileInfo file={fileInfo} all={all} meId={me.id} onClose={() => setFileInfo(null)} />}
+
+      {tagging && (
+        <TagDialog
+          key={tagging.id}
+          file={tagging}
+          onClose={() => setTagging(null)}
+          onSaved={() => {
+            setTagging(null);
+            loadItems();
+          }}
+        />
+      )}
+
+      {copying && (
+        <CopyDialog
+          folder={copying}
+          all={all}
+          onClose={() => setCopying(null)}
+          onCopied={async (r) => {
+            setCopying(null);
+            toast(
+              r.failed.length
+                ? `Copiata in «${r.name}», ma ${r.failed.length} file non sono stati copiati: ${r.failed.join(", ")}`
+                : `Copiata in «${r.name}»: ${plural(r.files, "file", "file")} sul tuo Drive`,
+              r.failed.length ? "error" : undefined,
+            );
+            await loadFolders();
+            loadStorage();
+            select(r.id);
+          }}
+        />
+      )}
 
       <MoveDialog
         exercise={moving}

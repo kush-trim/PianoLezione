@@ -167,10 +167,13 @@ const tipi: Record<string, Fields | string> = {
     source: '"drive" | "upload"',
     folderId: "string | null",
     folderName: "string | null",
+    tags: 'string[] — etichette: "Teoria", "Esercizi", "Soluzioni", "Extra" o libere',
     mimeType: "string",
     note: "string",
-    createdAt: "data e ora ISO",
+    createdAt: "data e ora ISO — quando è stato caricato",
     uploadedBy: "{ id, name } | null — chi l'ha caricato",
+    owner: "{ id, name } — proprietario della cartella: il file sta sul suo Google Drive",
+    copiedFrom: "string | null — se è una copia: la cartella da cui viene (es. «prima media» di Anna)",
     canEdit: "boolean — posso rinominarlo o eliminarlo (proprietario della cartella o chi l'ha caricato)",
     plans: "{ id, title, date }[] — i miei piani a cui è collegato (anche nessuno)",
   },
@@ -533,8 +536,18 @@ const gruppi: Record<string, Endpoint[]> = {
       metodo: "GET",
       percorso: "/api/exercises",
       descrizione: "Gli esercizi che posso vedere (mie cartelle e cartelle condivise con me), dal più recente.",
-      parametri: { "folderId?": "solo questa cartella", "q?": "testo cercato in titolo, nome del file e nota" },
+      parametri: {
+        "folderId?": "solo questa cartella (senza le sottocartelle)",
+        "q?": "testo cercato in titolo, nome del file, nota ed etichette",
+        "tag?": "solo i file con questa etichetta",
+      },
       risposta: "Esercizio[]",
+    },
+    {
+      metodo: "GET",
+      percorso: "/api/exercises/tags",
+      descrizione: "Le etichette usate negli esercizi che vedo, con quanti file le hanno: prima quelle pronte, poi le altre.",
+      risposta: "{ tag, count }[]",
     },
     {
       metodo: "POST",
@@ -546,6 +559,7 @@ const gruppi: Record<string, Endpoint[]> = {
         "folderId?": 'string — cartella di esercizi (predefinita: "I miei esercizi")',
         "title?": "string (solo con un file)",
         "planId?": "string — li collega subito a questo mio piano",
+        "tag?": "string, anche più volte — etichette",
       },
       risposta: "Esercizio[]",
       errori: {
@@ -554,7 +568,7 @@ const gruppi: Record<string, Endpoint[]> = {
       },
     },
     { metodo: "GET", percorso: "/api/exercises/:id", descrizione: "Un esercizio.", risposta: "Esercizio" },
-    { metodo: "PATCH", percorso: "/api/exercises/:id", descrizione: "Cambia titolo o nota, o sposta il file in un'altra cartella dello stesso Drive (proprietario della cartella o chi l'ha caricato). Spostando, il file sparisce dai piani di chi non vede la nuova cartella.", corpo: { "title?": "string", "note?": "string", "folderId?": "string — cartella in cui spostarlo" }, risposta: "Esercizio", errori: { 400: "la cartella è su un altro Drive" } },
+    { metodo: "PATCH", percorso: "/api/exercises/:id", descrizione: "Cambia titolo o nota, o sposta il file in un'altra cartella dello stesso Drive (proprietario della cartella o chi l'ha caricato). Spostando, il file sparisce dai piani di chi non vede la nuova cartella. Le etichette le può cambiare chiunque veda il file.", corpo: { "title?": "string", "note?": "string", "folderId?": "string — cartella in cui spostarlo", "tags?": "string[] — sostituisce le etichette (al massimo 12, da 30 caratteri)" }, risposta: "Esercizio", errori: { 400: "la cartella è su un altro Drive" } },
     { metodo: "DELETE", percorso: "/api/exercises/:id", descrizione: "Elimina l'esercizio: su Google Drive va nel cestino, dai piani sparisce il collegamento (proprietario della cartella o chi l'ha caricato).", risposta: ok },
     {
       metodo: "GET",
@@ -583,6 +597,14 @@ const gruppi: Record<string, Endpoint[]> = {
       corpo: { name: "string", "parentId?": "string | null" },
       risposta: "{ id, name, parentId }",
       errori: { 404: "parentId non esiste o non lo vedo", 409: "c'è già una cartella con quel nome nello stesso posto" },
+    },
+    {
+      metodo: "POST",
+      percorso: "/api/material-folders/:id/copy",
+      descrizione:
+        "Copia la cartella, con sottocartelle e file, sul mio Google Drive come nuova cartella tra le mie (anche una cartella condivisa con me). Si copiano titoli, note ed etichette, non i collegamenti ai piani. Al massimo 200 file e 1 GB per volta.",
+      risposta: "{ id, name, folders, files, failed: string[] } — la nuova cartella, quante cartelle e file copiati, i titoli dei file non copiati",
+      errori: { 400: "troppi file o troppo grande", 409: "Drive non autorizzato (mio o del proprietario)" },
     },
     {
       metodo: "GET",

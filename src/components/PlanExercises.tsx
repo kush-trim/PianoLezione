@@ -7,6 +7,7 @@ import { EXERCISE_ACCEPT, kindOf, type FileKind } from "@/lib/file-types";
 import { flattenTree } from "@/lib/folder-tree";
 import type { ExerciseDTO, ExerciseRef, FoldersDTO } from "@/lib/types";
 import { Button, Dialog, EmptyState, IconButton, Input, Loading, useToast } from "./ui";
+import { TagList } from "./Tags";
 
 const LAST_FOLDER = "pianostudio:cartella-esercizi";
 
@@ -105,7 +106,10 @@ function ExercisePicker({
               >
                 <FileIcon fileName={e.fileName} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-medium">{e.title}</span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="truncate font-medium">{e.title}</span>
+                    <TagList tags={e.tags} small />
+                  </span>
                   <span className="block truncate text-[13px] text-muted">
                     {[e.folderName, e.size ? fileSize(e.size) : null, e.plans.length ? `in ${e.plans.length} ${e.plans.length === 1 ? "piano" : "piani"}` : "non ancora usato"].filter(Boolean).join(" · ")}
                   </span>
@@ -245,7 +249,10 @@ export function PlanExercises({
             <li key={e.id} className="flex items-center gap-3 px-3 py-2">
               <FileIcon fileName={e.fileName} />
               <a href={e.url} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 hover:underline">
-                <span className="block truncate font-medium">{e.title}</span>
+                <span className="flex items-center gap-1.5">
+                  <span className="truncate font-medium">{e.title}</span>
+                  <TagList tags={e.tags} small />
+                </span>
                 <span className="block truncate text-[13px] text-muted">
                   {[e.fileName, e.size ? fileSize(e.size) : null, e.folderName ? `in «${e.folderName}»` : null].filter(Boolean).join(" · ")}
                 </span>

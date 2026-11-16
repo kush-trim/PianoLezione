@@ -214,6 +214,8 @@ export const exerciseUpdateSchema = z.object({
   note: z.string().trim().max(2000).optional(),
   /** Sposta il file in questa cartella (dello stesso Drive). */
   folderId: z.string().min(1).optional(),
+  /** Etichette (le pulisce normalizeTags). */
+  tags: z.array(z.string().max(100)).max(50).optional(),
 });
 
 // --- Cartelle di esercizi (Google Drive) ---

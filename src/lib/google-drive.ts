@@ -19,6 +19,8 @@ export interface DriveClient {
   appFolder(): Promise<string>;
   createFolder(name: string, parentId: string): Promise<{ id: string; webViewLink: string }>;
   upload(parentId: string, name: string, mimeType: string, data: Uint8Array): Promise<DriveFile>;
+  /** Il contenuto di un file. */
+  download(id: string): Promise<Uint8Array>;
   rename(id: string, name: string): Promise<void>;
   /** Sposta un file (o una cartella) da una cartella a un'altra. */
   move(id: string, fromParentId: string, toParentId: string): Promise<void>;
@@ -142,6 +144,10 @@ function realDrive(userId: string): DriveClient {
       const f = await json<{ id: string; name: string; mimeType: string; size?: string; webViewLink: string }>(res);
       return { id: f.id, name: f.name, mimeType: f.mimeType, size: Number(f.size ?? data.byteLength), webViewLink: f.webViewLink };
     },
+    async download(id) {
+      const res = await call(userId, `${API}/${id}?alt=media`);
+      return new Uint8Array(await res.arrayBuffer());
+    },
     async rename(id, name) {
       await call(userId, `${API}/${id}?fields=id`, {
         method: "PATCH",
@@ -192,7 +198,16 @@ function realDrive(userId: string): DriveClient {
 
 // --- Drive finto, per le prove ---
 
-type FakeItem = { id: string; name: string; mimeType: string; parent: string | null; trashed: boolean; size: number; perms: Map<string, string> };
+type FakeItem = {
+  id: string;
+  name: string;
+  mimeType: string;
+  parent: string | null;
+  trashed: boolean;
+  size: number;
+  perms: Map<string, string>;
+  data?: Uint8Array;
+};
 const fakeStore = new Map<string, FakeItem>();
 const fakeRoots = new Map<string, string>();
 
@@ -229,8 +244,13 @@ function fakeDrive(userId: string): DriveClient {
       await authorized();
       item(parentId);
       const f = id();
-      fakeStore.set(f, { id: f, name, mimeType, parent: parentId, trashed: false, size: data.byteLength, perms: new Map() });
+      fakeStore.set(f, { id: f, name, mimeType, parent: parentId, trashed: false, size: data.byteLength, perms: new Map(), data: data.slice() });
       return { id: f, name, mimeType, size: data.byteLength, webViewLink: `https://drive.google.com/file/d/${f}/view` };
+    },
+    async download(i) {
+      await authorized();
+      const f = item(i);
+      return f.data ? f.data.slice() : new Uint8Array(f.size);
     },
     async rename(i, name) {
       await authorized();
@@ -269,11 +289,6 @@ function fakeDrive(userId: string): DriveClient {
       fakeStore.get(i)?.perms.delete(permissionId);
     },
   };
-}
-
-/** Per le prove: lo stato del Drive finto (cartelle, file, condivisioni). */
-export function fakeDriveSnapshot() {
-  return [...fakeStore.values()].map((f) => ({ ...f, perms: [...f.perms.values()] }));
 }
 
 /** Il client Drive che agisce con l'account Google dell'utente indicato. */

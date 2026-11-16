@@ -268,6 +268,8 @@ export type ExerciseRef = {
   source: "drive" | "upload";
   folderId: string | null;
   folderName: string | null;
+  /** Etichette: Teoria, Esercizi, Soluzioni, Extra, o libere. */
+  tags: string[];
 };
 
 export type ExerciseDTO = ExerciseRef & {
@@ -276,6 +278,10 @@ export type ExerciseDTO = ExerciseRef & {
   mimeType: string;
   /** Chi l'ha caricato (in una cartella condivisa può essere un collega). */
   uploadedBy: { id: string; name: string } | null;
+  /** Il proprietario della cartella: il file sta sul suo Google Drive. */
+  owner: { id: string; name: string };
+  /** Se è la copia di un file di una cartella altrui: da dove viene. */
+  copiedFrom: string | null;
   /** Può rinominarlo o eliminarlo: il proprietario della cartella o chi l'ha caricato. */
   canEdit: boolean;
   /** I miei piani a cui è collegato (anche nessuno). */
@@ -283,6 +289,12 @@ export type ExerciseDTO = ExerciseRef & {
 };
 
 export type PersonDTO = { id: string; name: string; email: string };
+
+/** Le etichette usate negli esercizi che vedo, con quanti file le hanno. */
+export type TagCountDTO = { tag: string; count: number };
+
+/** Esito della copia di una cartella sul mio Drive. */
+export type FolderCopyDTO = { id: string; name: string; folders: number; files: number; failed: string[] };
 
 export type MaterialFolderDTO = {
   id: string;

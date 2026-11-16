@@ -307,6 +307,10 @@ model Exercise {
   driveFileId  String?
   webViewLink  String?
   uploadedById String?
+  // Etichette (Teoria, Esercizi, Soluzioni, Extra… o libere), come array JSON di stringhe.
+  tags         String   @default("[]")
+  // Se è la copia di un file di una cartella altrui: da dove viene (es. «prima media» di Anna).
+  copiedFrom   String?
 
   user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   folder     MaterialFolder? @relation(fields: [folderId], references: [id], onDelete: Cascade)
