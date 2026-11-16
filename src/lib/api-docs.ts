@@ -404,7 +404,7 @@ const gruppi: Record<string, Endpoint[]> = {
       descrizione: "Elenco dei piani, dal più recente.",
       parametri: {
         "folderId?": 'id di una cartella, oppure "none" per i piani senza cartella',
-        "q?": "testo cercato nel titolo",
+        "q?": "testo cercato nel titolo e nel piano: obiettivi, fasi, verifica, allegati, note, classe e materia delle lezioni",
         "templates?": '"1" per avere i modelli invece dei piani',
         "limit?": "numero massimo di risultati",
       },
@@ -615,10 +615,14 @@ const gruppi: Record<string, Endpoint[]> = {
     {
       metodo: "PATCH",
       percorso: "/api/material-folders/:id",
-      descrizione: "Rinomina, anche su Drive. Il proprietario, o chi ha creato la sottocartella.",
-      corpo: { name: "string" },
+      descrizione:
+        "Rinomina e/o sposta, anche su Drive. Il proprietario, o chi ha creato la sottocartella. Si sposta solo tra cartelle dello stesso Drive; chi dopo lo spostamento non vede più i file li perde dai suoi piani.",
+      corpo: { "name?": "string", "parentId?": "string | null — la cartella in cui metterla; null = tra le principali (solo il proprietario)" },
       risposta: ok,
-      errori: { 409: "c'è già una cartella con quel nome nello stesso posto" },
+      errori: {
+        400: "altro Drive, dentro sé stessa, \"I miei file\", o cartella principale condivisa messa dentro un'altra",
+        409: "c'è già una cartella con quel nome nello stesso posto",
+      },
     },
     {
       metodo: "DELETE",

@@ -23,19 +23,32 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { FileIcon, fileSize, uploadExercises } from "@/components/PlanExercises";
 import { ShareDialog } from "@/components/ShareDialog";
 import { TagChip, TagEditor, TagList } from "@/components/Tags";
-import { Button, buttonClass, cx, Dialog, EmptyState, ErrorNote, Field, IconButton, Input, Loading, useToast } from "@/components/ui";
+import { Button, buttonClass, cx, Dialog, EmptyState, ErrorNote, Field, IconButton, Input, isMod, isTyping, Loading, modLabel, useToast } from "@/components/ui";
 import { api, errorMessage } from "@/lib/api";
 import { EXERCISE_ACCEPT, extensionOf } from "@/lib/file-types";
-import { childrenOf, flattenTree, folderLabel, folderTotals, pathOf } from "@/lib/folder-tree";
+import { childrenOf, flattenTree, folderLabel, folderTotals, pathOf, subtreeIds } from "@/lib/folder-tree";
 import { humanDate } from "@/lib/plan-utils";
-import { sortTags, tagKey } from "@/lib/tags";
+import { normalizeTags, sortTags, tagKey } from "@/lib/tags";
 import type { ExerciseDTO, FolderCopyDTO, FoldersDTO, MaterialFolderDTO, PlanSummary, StorageDTO, TagCountDTO, UserDTO } from "@/lib/types";
 
 const LAST_FOLDER = "pianostudio:cartella-esercizi";
+/** Trascinamento interno: file o cartelle da spostare su una cartella. */
+const DRAG_TYPE = "application/x-pianostudio-file";
+
+/** Gestori per trascinare e lasciare sulle cartelle (albero e sottocartelle). */
+type Dnd = {
+  over: string | null;
+  folderDrop: (f: MaterialFolderDTO) => {
+    onDragOver: (e: DragEvent) => void;
+    onDragLeave: () => void;
+    onDrop: (e: DragEvent) => void;
+  };
+  folderDrag: (f: MaterialFolderDTO) => { draggable?: boolean; onDragStart?: (e: DragEvent) => void };
+};
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -124,6 +137,7 @@ function FolderNode({
   isOpen,
   onToggle,
   onSelect,
+  dnd,
 }: {
   f: MaterialFolderDTO;
   all: MaterialFolderDTO[];
@@ -132,6 +146,7 @@ function FolderNode({
   isOpen: (id: string) => boolean;
   onToggle: (id: string, open: boolean) => void;
   onSelect: (id: string) => void;
+  dnd: Dnd;
 }) {
   const kids = childrenOf(all, f.id);
   const open = kids.length > 0 && isOpen(f.id);
@@ -142,8 +157,14 @@ function FolderNode({
   return (
     <li>
       <div
-        className={cx("flex items-center rounded-md transition-colors", selected ? "bg-accent-soft font-medium text-accent" : "hover:bg-sunken")}
+        className={cx(
+          "flex items-center rounded-md transition-colors",
+          selected ? "bg-accent-soft font-medium text-accent" : "hover:bg-sunken",
+          dnd.over === f.id && "ring-2 ring-accent",
+        )}
         style={{ paddingLeft: depth * 14 }}
+        {...dnd.folderDrop(f)}
+        {...dnd.folderDrag(f)}
       >
         {kids.length ? (
           <button
@@ -176,7 +197,7 @@ function FolderNode({
       {open && (
         <ul>
           {kids.map((k) => (
-            <FolderNode key={k.id} f={k} all={all} depth={depth + 1} selectedId={selectedId} isOpen={isOpen} onToggle={onToggle} onSelect={onSelect} />
+            <FolderNode key={k.id} f={k} all={all} depth={depth + 1} selectedId={selectedId} isOpen={isOpen} onToggle={onToggle} onSelect={onSelect} dnd={dnd} />
           ))}
         </ul>
       )}
@@ -286,66 +307,128 @@ function FolderInfo({ folder, all, meId, onClose }: { folder: MaterialFolderDTO 
   );
 }
 
-/** Sposta un file in un'altra cartella dello stesso Drive. */
-function MoveDialog({
-  exercise,
+/**
+ * Scelta della cartella di destinazione, tra quelle dello stesso Drive (stesso proprietario).
+ * Serve per spostare file (uno o più) e cartelle.
+ */
+function FolderPickerDialog({
+  title,
+  intro,
   all,
+  ownerId,
+  exclude = new Set(),
+  current,
+  rootLabel,
   onClose,
-  onMoved,
+  onPick,
 }: {
-  exercise: ExerciseDTO | null;
+  title: string;
+  intro: ReactNode;
   all: MaterialFolderDTO[];
+  /** null: niente da proporre (es. file su Drive diversi). */
+  ownerId: string | null;
+  exclude?: Set<string>;
+  /** Dove sta adesso (si vede ma non si sceglie). */
+  current: string | null;
+  /** Se c'è, la prima riga mette tra le cartelle principali. */
+  rootLabel?: string;
   onClose: () => void;
-  onMoved: (label: string) => void;
+  onPick: (to: MaterialFolderDTO | null) => Promise<void>;
 }) {
-  const toast = useToast();
   const [busy, setBusy] = useState(false);
-  const from = all.find((f) => f.id === exercise?.folderId);
-  // Solo le cartelle dello stesso proprietario: il file resta sullo stesso Drive.
-  const same = from ? all.filter((f) => f.owner.id === from.owner.id) : [];
+  const same = ownerId ? all.filter((f) => f.owner.id === ownerId && !exclude.has(f.id)) : [];
   const tree = flattenTree(
     same,
     same.filter((f) => !f.parentId || !same.some((p) => p.id === f.parentId)),
   );
-
-  async function move(to: MaterialFolderDTO) {
-    if (!exercise) return;
+  const pick = async (to: MaterialFolderDTO | null) => {
     setBusy(true);
-    try {
-      await api.patch(`/api/exercises/${exercise.id}`, { folderId: to.id });
-      onMoved(folderLabel(all, to.id));
-    } catch (e) {
-      toast(errorMessage(e), "error");
-    }
+    await onPick(to);
     setBusy(false);
-  }
+  };
+  const row = "flex w-full items-center gap-2 rounded-md py-2 pr-2 text-left hover:bg-sunken disabled:cursor-default disabled:hover:bg-transparent";
 
   return (
-    <Dialog open={!!exercise} onClose={onClose} title={`Sposta «${exercise?.title ?? ""}»`}>
-      <p className="mb-3 text-[13px] text-muted">
-        Si sposta anche su Google Drive. Le cartelle sono quelle dello stesso Drive{from && from.role === "member" ? ` (di ${from.owner.name})` : ""}. Se il file esce da
-        una cartella condivisa, sparisce dai piani dei colleghi che non lo vedono più.
-      </p>
+    <Dialog open onClose={() => !busy && onClose()} title={title}>
+      <div className="mb-3 text-[13px] text-muted">{intro}</div>
       <ul className="max-h-[50vh] space-y-0.5 overflow-y-auto">
+        {rootLabel && (
+          <li>
+            <button type="button" disabled={busy || current === null} onClick={() => pick(null)} style={{ paddingLeft: 8 }} className={row}>
+              <FolderOpen className="size-4 shrink-0 text-muted" aria-hidden />
+              <span className={cx("min-w-0 flex-1 truncate", current === null && "text-muted")}>{rootLabel}</span>
+              {current === null && <span className="text-xs text-muted">è qui</span>}
+            </button>
+          </li>
+        )}
         {tree.map(({ folder: f, depth }) => {
-          const current = f.id === exercise?.folderId;
+          const here = f.id === current;
           return (
             <li key={f.id}>
-              <button
-                type="button"
-                disabled={current || busy}
-                onClick={() => move(f)}
-                style={{ paddingLeft: 8 + depth * 18 }}
-                className="flex w-full items-center gap-2 rounded-md py-2 pr-2 text-left hover:bg-sunken disabled:cursor-default disabled:hover:bg-transparent"
-              >
+              <button type="button" disabled={here || busy} onClick={() => pick(f)} style={{ paddingLeft: 8 + (depth + (rootLabel ? 1 : 0)) * 18 }} className={row}>
                 <Folder className="size-4 shrink-0 text-muted" aria-hidden />
-                <span className={cx("min-w-0 flex-1 truncate", current && "text-muted")}>{f.name}</span>
-                {current && <span className="text-xs text-muted">è qui</span>}
+                <span className={cx("min-w-0 flex-1 truncate", here && "text-muted")}>{f.name}</span>
+                {here && <span className="text-xs text-muted">è qui</span>}
               </button>
             </li>
           );
         })}
       </ul>
+    </Dialog>
+  );
+}
+
+/** Etichette di più file insieme: si aggiungono o tolgono a tutti; le altre restano come sono. */
+function BulkTagDialog({ files, onClose, onSaved }: { files: ExerciseDTO[]; onClose: () => void; onSaved: (changed: number) => void }) {
+  const toast = useToast();
+  // Le etichette che hanno tutti i file selezionati.
+  const common = files.length ? files[0].tags.filter((t) => files.every((x) => x.tags.some((y) => tagKey(y) === tagKey(t)))) : [];
+  const [tags, setTags] = useState<string[]>(common);
+  const [used, setUsed] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api.get<TagCountDTO[]>("/api/exercises/tags").then((t) => setUsed(t.map((x) => x.tag)), () => {});
+  }, []);
+
+  async function save() {
+    setBusy(true);
+    const removed = new Set(common.filter((t) => !tags.some((x) => tagKey(x) === tagKey(t))).map(tagKey));
+    let changed = 0;
+    try {
+      for (const x of files) {
+        const next = normalizeTags([...x.tags.filter((t) => !removed.has(tagKey(t))), ...tags]);
+        if (next.map(tagKey).join("|") === x.tags.map(tagKey).join("|")) continue;
+        await api.patch(`/api/exercises/${x.id}`, { tags: next });
+        changed++;
+      }
+      onSaved(changed);
+    } catch (e) {
+      toast(errorMessage(e), "error");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={() => !busy && onClose()}
+      title={`Etichette di ${plural(files.length, "file", "file")}`}
+      footer={
+        <>
+          <Button onClick={onClose} disabled={busy}>
+            Annulla
+          </Button>
+          <Button variant="primary" onClick={save} loading={busy}>
+            Salva
+          </Button>
+        </>
+      }
+    >
+      <TagEditor value={tags} onChange={setTags} used={used} />
+      <p className="mt-3 text-[13px] text-muted">
+        Quelle attive le hanno tutti i file selezionati: attivandone una la ricevono tutti, disattivandola la perdono tutti. Le etichette che hanno solo alcuni file restano
+        come sono.
+      </p>
     </Dialog>
   );
 }
@@ -534,7 +617,14 @@ export default function FilePage() {
   const [draft, setDraft] = useState({ title: "", note: "" });
   const [editError, setEditError] = useState("");
   const [linking, setLinking] = useState<ExerciseDTO | null>(null);
-  const [moving, setMoving] = useState<ExerciseDTO | null>(null);
+  // File da spostare (uno o più), cartella da spostare, etichette di più file.
+  const [moveFiles, setMoveFiles] = useState<ExerciseDTO[] | null>(null);
+  const [movingFolder, setMovingFolder] = useState<MaterialFolderDTO | null>(null);
+  const [bulkTags, setBulkTags] = useState<ExerciseDTO[] | null>(null);
+  // File selezionati (caselle) e cartella su cui si sta trascinando.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [over, setOver] = useState<string | null>(null);
+  const anchor = useRef<number | null>(null);
   const [tagging, setTagging] = useState<ExerciseDTO | null>(null);
   const [fileInfo, setFileInfo] = useState<ExerciseDTO | null>(null);
   const [copying, setCopying] = useState<MaterialFolderDTO | null>(null);
@@ -559,6 +649,12 @@ export default function FilePage() {
       ),
     [toast],
   );
+  const keyRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => keyRef.current(e);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const loadStorage = useCallback(() => api.get<StorageDTO>("/api/material-folders/storage").then(setStorage, () => {}), []);
   useEffect(() => {
     loadFolders();
@@ -587,6 +683,8 @@ export default function FilePage() {
     setSelected(id);
     setQuery("");
     setTagFilter(null);
+    setPicked(new Set());
+    anchor.current = null;
     // La cartella e quelle che la contengono si riaprono, anche se erano state chiuse a mano.
     if (data) {
       const path = pathOf(data.folders, id);
@@ -675,7 +773,88 @@ export default function FilePage() {
     }
   }
 
+  /** Sposta i file uno per uno; alla fine un messaggio con quanti sono andati e cosa non è andato. */
+  async function moveFilesTo(files: ExerciseDTO[], to: MaterialFolderDTO, label: string) {
+    let moved = 0;
+    const errors: string[] = [];
+    for (const x of files) {
+      if (x.folderId === to.id) continue;
+      try {
+        await api.patch(`/api/exercises/${x.id}`, { folderId: to.id });
+        moved++;
+      } catch (e) {
+        errors.push(`«${x.title}»: ${errorMessage(e)}`);
+      }
+    }
+    if (moved) toast(`${plural(moved, "file spostato", "file spostati")} in «${label}»`);
+    if (errors.length) toast(errors.join(" · "), "error");
+    setPicked(new Set());
+    reload();
+  }
+
+  async function moveFolderTo(src: MaterialFolderDTO, to: MaterialFolderDTO | null, label: string) {
+    try {
+      await api.patch(`/api/material-folders/${src.id}`, { parentId: to?.id ?? null });
+      toast(`«${src.name}» spostata in «${label}»`);
+      reload();
+    } catch (e) {
+      toast(errorMessage(e), "error");
+    }
+  }
+
+  async function removeMany(files: ExerciseDTO[]) {
+    const mine = files.filter((x) => x.canEdit);
+    const others = files.length - mine.length;
+    if (!mine.length) return toast("Questi file li può eliminare solo chi li ha caricati o il proprietario della cartella", "error");
+    const skip = others ? ` (${plural(others, "file resta", "file restano")}: li può eliminare solo chi li ha caricati o il proprietario della cartella)` : "";
+    if (!confirm(`Eliminare ${plural(mine.length, "file", "file")}${skip}? Su Google Drive vanno nel cestino; spariscono anche dai piani.`)) return;
+    let gone = 0;
+    for (const x of mine) {
+      try {
+        await api.del(`/api/exercises/${x.id}`);
+        gone++;
+      } catch (e) {
+        toast(`«${x.title}»: ${errorMessage(e)}`, "error");
+      }
+    }
+    if (gone) toast(`${plural(gone, "file eliminato", "file eliminati")}`);
+    setPicked(new Set());
+    reload();
+  }
+
   const unlink = (x: ExerciseDTO, planId: string) => api.del(`/api/exercises/${x.id}/plans/${planId}`).then(loadItems, (e) => toast(errorMessage(e), "error"));
+
+  // Le etichette dei file mostrati, con quanti file le hanno; il filtro tiene solo quei file.
+  const tagCounts = new Map<string, { tag: string; n: number }>();
+  for (const x of items ?? []) {
+    for (const t of x.tags)
+      tagCounts.set(tagKey(t), {
+        tag: t,
+        n: (tagCounts.get(tagKey(t))?.n ?? 0) + 1,
+      });
+  }
+  const visibleTags = sortTags([...tagCounts.values()].map((c) => c.tag));
+  const activeFilter = tagFilter && tagCounts.has(tagKey(tagFilter)) ? tagFilter : null;
+  const shown = (items ?? []).filter((x) => !activeFilter || x.tags.some((t) => tagKey(t) === tagKey(activeFilter)));
+
+  const pickedFiles = shown.filter((x) => picked.has(x.id));
+  // Tastiera: ⌘/Ctrl+A seleziona tutti, Esc toglie la selezione, Canc elimina i selezionati.
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (isTyping(e) || document.querySelector("dialog[open]")) return;
+    if (isMod(e) && e.key.toLowerCase() === "a" && shown.length) {
+      e.preventDefault();
+      setPicked(new Set(shown.map((x) => x.id)));
+    } else if (e.key === "Escape" && picked.size) {
+      setPicked(new Set());
+    } else if ((e.key === "Delete" || e.key === "Backspace") && pickedFiles.length) {
+      e.preventDefault();
+      removeMany(pickedFiles);
+    }
+  };
+
+  useEffect(() => {
+    keyRef.current = onKeyDown;
+  });
 
   if (!data || !me) return <Loading />;
 
@@ -692,25 +871,81 @@ export default function FilePage() {
   const shared = all.filter((f) => !f.parentId && f.role === "member");
   const authorize = `/api/auth/google?drive=1&next=${encodeURIComponent("/file")}`;
 
-  // Le etichette dei file mostrati, con quanti file le hanno; il filtro tiene solo quei file.
-  const tagCounts = new Map<string, { tag: string; n: number }>();
-  for (const x of items ?? []) {
-    for (const t of x.tags)
-      tagCounts.set(tagKey(t), {
-        tag: t,
-        n: (tagCounts.get(tagKey(t))?.n ?? 0) + 1,
-      });
-  }
-  const visibleTags = sortTags([...tagCounts.values()].map((c) => c.tag));
-  const activeFilter = tagFilter && tagCounts.has(tagKey(tagFilter)) ? tagFilter : null;
-  const shown = (items ?? []).filter((x) => !activeFilter || x.tags.some((t) => tagKey(t) === tagKey(activeFilter)));
+  const togglePick = (e: MouseEvent, index: number) => {
+    const x = shown[index];
+    const next = new Set(picked);
+    if (e.shiftKey && anchor.current !== null) {
+      // Maiusc: tutto l'intervallo dall'ultimo scelto.
+      const [a, b] = [Math.min(anchor.current, index), Math.max(anchor.current, index)];
+      for (const y of shown.slice(a, b + 1)) next.add(y.id);
+    } else if (next.has(x.id)) next.delete(x.id);
+    else next.add(x.id);
+    anchor.current = index;
+    setPicked(next);
+  };
 
+  const label = (id: string | null) => (id ? folderLabel(all, id) : "Le mie cartelle");
+  const dnd: Dnd = {
+    over,
+    folderDrop: (target) => ({
+      onDragOver: (e) => {
+        if (!e.dataTransfer.types.includes(DRAG_TYPE)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        setOver(target.id);
+      },
+      onDragLeave: () => setOver((o) => (o === target.id ? null : o)),
+      onDrop: (e) => {
+        if (!e.dataTransfer.types.includes(DRAG_TYPE)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        setOver(null);
+        let payload: { files?: string[]; folder?: string } | null = null;
+        try {
+          payload = JSON.parse(e.dataTransfer.getData(DRAG_TYPE));
+        } catch {}
+        if (payload?.folder) {
+          const src = all.find((x) => x.id === payload.folder);
+          if (src && src.id !== target.id && src.parentId !== target.id) moveFolderTo(src, target, label(target.id));
+        } else if (payload?.files?.length) {
+          moveFilesTo(
+            (items ?? []).filter((x) => payload!.files!.includes(x.id)),
+            target,
+            label(target.id),
+          );
+        }
+      },
+    }),
+    folderDrag: (src) =>
+      src.canManage && !src.isDefault
+        ? {
+            draggable: true,
+            onDragStart: (e) => {
+              e.stopPropagation();
+              e.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ folder: src.id }));
+              e.dataTransfer.effectAllowed = "move";
+            },
+          }
+        : {},
+  };
+  const fileDrag = (x: ExerciseDTO) =>
+    x.canEdit && x.folderId
+      ? {
+          draggable: true,
+          onDragStart: (e: DragEvent) => {
+            // Si trascina la selezione se il file ne fa parte, altrimenti solo lui.
+            const ids = picked.has(x.id) ? pickedFiles.filter((y) => y.canEdit).map((y) => y.id) : [x.id];
+            e.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ files: ids }));
+            e.dataTransfer.effectAllowed = "move";
+          },
+        }
+      : {};
   const shareText = (r: MaterialFolderDTO) =>
     r.role === "member" ? `Condivisa da ${r.owner.name}` : r.members.length ? `Condivisa con ${r.members.map((m) => m.name).join(", ")}` : "Solo tua";
   const tree = (roots: MaterialFolderDTO[]) => (
     <ul>
       {roots.map((f) => (
-        <FolderNode key={f.id} f={f} all={all} depth={0} selectedId={q ? null : selected} isOpen={isOpen} onToggle={toggle} onSelect={select} />
+        <FolderNode key={f.id} f={f} all={all} depth={0} selectedId={q ? null : selected} isOpen={isOpen} onToggle={toggle} onSelect={select} dnd={dnd} />
       ))}
     </ul>
   );
@@ -845,6 +1080,9 @@ export default function FilePage() {
                   </IconButton>
                   {folder.canManage && !folder.isDefault && (
                     <>
+                      <IconButton label={`Sposta ${folder.name}`} onClick={() => setMovingFolder(folder)}>
+                        <FolderInput className="size-4" />
+                      </IconButton>
                       <IconButton
                         label={`Rinomina ${folder.name}`}
                         onClick={() => {
@@ -874,7 +1112,7 @@ export default function FilePage() {
           {subfolders.length > 0 && (
             <ul className="mb-3 divide-y divide-line rounded-xl border border-line bg-surface" aria-label="Sottocartelle">
               {subfolders.map((sf) => (
-                <li key={sf.id}>
+                <li key={sf.id} {...dnd.folderDrop(sf)} {...dnd.folderDrag(sf)} className={cx(over === sf.id && "rounded-xl ring-2 ring-accent ring-inset")}>
                   <button type="button" onClick={() => select(sf.id)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-sunken">
                     <Folder className="size-5 shrink-0 text-muted" aria-hidden />
                     <span className="min-w-0 flex-1">
@@ -921,6 +1159,29 @@ export default function FilePage() {
             </div>
           )}
 
+          {pickedFiles.length > 0 && (
+            <div className="sticky top-0 z-10 mb-2 flex flex-wrap items-center gap-1.5 rounded-lg border border-line bg-surface px-2 py-1.5 shadow-sm max-md:top-[49px]">
+              <span className="px-1 text-[13px] font-medium">{pickedFiles.length} selezionati</span>
+              <Button size="sm" variant="ghost" onClick={() => setMoveFiles(pickedFiles.filter((x) => x.canEdit && x.folderId))}>
+                <FolderInput className="size-3.5" /> Sposta
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setBulkTags(pickedFiles)}>
+                <Tag className="size-3.5" /> Etichette
+              </Button>
+              <Button size="sm" variant="danger" onClick={() => removeMany(pickedFiles)} title="Canc">
+                <Trash2 className="size-3.5" /> Elimina
+              </Button>
+              {pickedFiles.length < shown.length && (
+                <Button size="sm" variant="ghost" onClick={() => setPicked(new Set(shown.map((x) => x.id)))} title={`${modLabel()}A`}>
+                  Seleziona tutti
+                </Button>
+              )}
+              <IconButton label="Deseleziona (Esc)" className="ml-auto" onClick={() => setPicked(new Set())}>
+                <X className="size-3.5" />
+              </IconButton>
+            </div>
+          )}
+
           {!items ? (
             <Loading />
           ) : items.length === 0 ? (
@@ -946,7 +1207,19 @@ export default function FilePage() {
           ) : (
             <ul className="divide-y divide-line rounded-xl border border-line bg-surface">
               {shown.map((x) => (
-                <li key={x.id} className="flex flex-wrap items-start gap-3 px-3 py-2.5">
+                <li
+                  key={x.id}
+                  className={cx("flex flex-wrap items-start gap-3 px-3 py-2.5", picked.has(x.id) && "bg-accent-soft/60")}
+                  {...fileDrag(x)}
+                >
+                  <input
+                    type="checkbox"
+                    checked={picked.has(x.id)}
+                    onClick={(e) => togglePick(e, shown.indexOf(x))}
+                    onChange={() => {}}
+                    aria-label={`Seleziona ${x.title}`}
+                    className="mt-1 size-4 shrink-0 cursor-pointer accent-accent"
+                  />
                   <FileIcon fileName={x.fileName} className="mt-0.5 size-5" />
                   <div className="min-w-0 flex-1">
                     <a href={x.url} target="_blank" rel="noopener noreferrer" className="block truncate font-medium hover:underline">
@@ -1006,7 +1279,7 @@ export default function FilePage() {
                     {x.canEdit && (
                       <>
                         {x.folderId && (
-                          <IconButton label={`Sposta ${x.title}`} onClick={() => setMoving(x)}>
+                          <IconButton label={`Sposta ${x.title}`} onClick={() => setMoveFiles([x])}>
                             <FolderInput className="size-4" />
                           </IconButton>
                         )}
@@ -1029,6 +1302,12 @@ export default function FilePage() {
                 </li>
               ))}
             </ul>
+          )}
+          {shown.length > 0 && (
+            <p className="mt-2 text-xs text-muted">
+              Seleziona più file con le caselle (Maiusc per un intervallo, {modLabel()}A per tutti, Esc per togliere la selezione, Canc per eliminarli). Trascina file e
+              cartelle su una cartella, a sinistra o qui sopra, per spostarli.
+            </p>
           )}
         </section>
       </div>
@@ -1133,16 +1412,72 @@ export default function FilePage() {
         />
       )}
 
-      <MoveDialog
-        exercise={moving}
-        all={all}
-        onClose={() => setMoving(null)}
-        onMoved={(label) => {
-          setMoving(null);
-          toast(`Spostato in «${label}»`);
-          reload();
-        }}
-      />
+      {moveFiles &&
+        (() => {
+          const owners = new Set(moveFiles.map((x) => x.owner.id));
+          const folders = new Set(moveFiles.map((x) => x.folderId));
+          const one = moveFiles.length === 1 ? moveFiles[0] : null;
+          return (
+            <FolderPickerDialog
+              title={one ? `Sposta «${one.title}»` : `Sposta ${plural(moveFiles.length, "file", "file")}`}
+              intro={
+                owners.size > 1 ? (
+                  "I file scelti stanno su Drive diversi: si possono spostare insieme solo file dello stesso proprietario."
+                ) : moveFiles.length === 0 ? (
+                  "Nessuno dei file scelti si può spostare: lo può fare solo chi li ha caricati o il proprietario della cartella."
+                ) : (
+                  <>
+                    Si spostano anche su Google Drive, tra le cartelle dello stesso Drive. Se un file esce da una cartella condivisa, sparisce dai piani dei colleghi che non
+                    lo vedono più.
+                  </>
+                )
+              }
+              all={all}
+              ownerId={owners.size === 1 ? [...owners][0] : null}
+              current={folders.size === 1 ? [...folders][0] : "—"}
+              onClose={() => setMoveFiles(null)}
+              onPick={async (to) => {
+                if (!to) return;
+                await moveFilesTo(moveFiles, to, label(to.id));
+                setMoveFiles(null);
+              }}
+            />
+          );
+        })()}
+
+      {movingFolder && (
+        <FolderPickerDialog
+          title={`Sposta «${movingFolder.name}»`}
+          intro={
+            <>
+              La cartella si sposta con tutto il contenuto, anche su Google Drive, tra le cartelle dello stesso Drive.
+              {!movingFolder.parentId && movingFolder.members.length > 0 && " È condivisa: prima di metterla dentro un'altra cartella togli la condivisione."}
+            </>
+          }
+          all={all}
+          ownerId={movingFolder.owner.id}
+          exclude={subtreeIds(all, movingFolder.id)}
+          current={movingFolder.parentId}
+          rootLabel={movingFolder.role === "owner" ? "Le mie cartelle (cartella principale)" : undefined}
+          onClose={() => setMovingFolder(null)}
+          onPick={async (to) => {
+            await moveFolderTo(movingFolder, to, label(to?.id ?? null));
+            setMovingFolder(null);
+          }}
+        />
+      )}
+
+      {bulkTags && (
+        <BulkTagDialog
+          files={bulkTags}
+          onClose={() => setBulkTags(null)}
+          onSaved={(n) => {
+            setBulkTags(null);
+            toast(n ? `Etichette aggiornate su ${plural(n, "file", "file")}` : "Nessun cambiamento");
+            loadItems();
+          }}
+        />
+      )}
 
       <PlanPicker
         exercise={linking}

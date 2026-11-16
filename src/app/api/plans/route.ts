@@ -5,7 +5,7 @@ import { assertOwned, clonePlan, getPlan, listPlans } from "@/lib/plans";
 import { ensureSettings } from "@/lib/settings";
 import { planCreateSchema } from "@/lib/validation";
 
-// GET /api/plans?folderId=<id|none>&q=<testo>&templates=1&limit=<n>
+// GET /api/plans?folderId=<id|none>&q=<testo>&templates=1&limit=<n> (q: titolo, obiettivi, fasi, verifica, note, classe, materia)
 export const GET = route(async (req) => {
   const user = await requireUser();
   const sp = new URL(req.url).searchParams;
@@ -18,7 +18,25 @@ export const GET = route(async (req) => {
     {
       isTemplate: sp.get("templates") === "1",
       ...(folderId === "none" ? { folderId: null } : folderId ? { folderId } : {}),
-      ...(q ? { title: { contains: q } } : {}),
+      // Il testo si cerca nel titolo e in tutto il piano: obiettivi, fasi, verifica, note, classe e materia.
+      ...(q
+        ? {
+            OR: [
+              { title: { contains: q } },
+              { prerequisiti: { contains: q } },
+              { obiettivoInsegnamento: { contains: q } },
+              { traguardo: { contains: q } },
+              { obiettivoApprendimento: { contains: q } },
+              { obiettiviInsJson: { contains: q } },
+              { obiettiviAppJson: { contains: q } },
+              { verifica: { contains: q } },
+              { allegati: { contains: q } },
+              { notaPost: { contains: q } },
+              { phases: { some: { OR: [{ name: { contains: q } }, { descrizione: { contains: q } }, { obiettiviSpecifici: { contains: q } }, { materiale: { contains: q } }] } } },
+              { slots: { some: { slot: { OR: [{ className: { contains: q } }, { subject: { contains: q } }] } } } },
+            ],
+          }
+        : {}),
     },
     limit,
   );

@@ -224,6 +224,14 @@ export const materialFolderSchema = z.object({
   name: z.string().trim().min(1, "inserisci un nome").max(100),
 });
 
+/** Cambia nome e/o posto (parentId null: tra le cartelle principali). */
+export const materialFolderUpdateSchema = z
+  .object({
+    name: z.string().trim().min(1, "inserisci un nome").max(100).optional(),
+    parentId: z.string().min(1).nullable().optional(),
+  })
+  .refine((v) => v.name !== undefined || v.parentId !== undefined, "indica il nuovo nome o la nuova cartella");
+
 export const materialFolderCreateSchema = materialFolderSchema.extend({
   /** Con parentId è una sottocartella. */
   parentId: z.string().min(1).nullable().optional(),

@@ -192,6 +192,66 @@ export async function renameFolder(userId: string, folderId: string, name: strin
 }
 
 /**
+ * Sposta una cartella (con tutto il contenuto) dentro un'altra dello stesso Drive, oppure tra le
+ * cartelle principali (parentId null, solo il proprietario). Chi dopo lo spostamento non vede
+ * più i file li perde anche dai suoi piani.
+ */
+export async function moveFolder(userId: string, folderId: string, parentId: string | null) {
+  const folder = await manageableFolder(userId, folderId);
+  if (folder.isDefault) throw new ApiError(400, `"${DEFAULT_FOLDER_NAME}" non si può spostare`);
+  if (folder.parentId === parentId) return;
+
+  // La cartella e tutto ciò che contiene.
+  const tree = await db.materialFolder.findMany({
+    where: { OR: [{ id: folder.rootId ?? folder.id }, { rootId: folder.rootId ?? folder.id }] },
+    select: { id: true, parentId: true },
+  });
+  const subtree = new Set([folder.id]);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const f of tree) {
+      if (f.parentId && subtree.has(f.parentId) && !subtree.has(f.id)) {
+        subtree.add(f.id);
+        grew = true;
+      }
+    }
+  }
+
+  let target: Awaited<ReturnType<typeof folderAccess>>["folder"] | null = null;
+  if (parentId) {
+    target = (await folderAccess(userId, parentId)).folder;
+    if (target.ownerId !== folder.ownerId) throw new ApiError(400, "Una cartella si sposta solo tra cartelle dello stesso Google Drive");
+    if (subtree.has(target.id)) throw new ApiError(400, "Una cartella non si può spostare dentro sé stessa o una sua sottocartella");
+  } else if (folder.ownerId !== userId) {
+    throw new ApiError(403, "Solo il proprietario può farla diventare una cartella principale");
+  }
+  // Una cartella principale condivisa porta con sé i colleghi: dentro un'altra li perderebbe.
+  if (!folder.rootId && parentId) {
+    const shared =
+      (await db.materialFolderMember.count({ where: { folderId } })) + (await db.folderInvite.count({ where: { folderId, status: "pending" } }));
+    if (shared) {
+      throw new ApiError(400, "È condivisa con dei colleghi: per metterla dentro un'altra cartella togli prima la condivisione e gli inviti");
+    }
+  }
+  await assertFreeName(folder.name, { ownerId: folder.ownerId, parentId }, folder.id);
+
+  const drive = driveFor(folder.ownerId);
+  const from = folder.parentId ? (await db.materialFolder.findUniqueOrThrow({ where: { id: folder.parentId } })).driveFolderId : await drive.appFolder();
+  const to = target ? target.driveFolderId : await drive.appFolder();
+  await drive.move(folder.driveFolderId, from, to);
+
+  const newRoot = target ? (target.rootId ?? target.id) : null;
+  const members = await db.materialFolderMember.findMany({ where: { folderId: newRoot ?? folder.id }, select: { userId: true } });
+  const allowed = [folder.ownerId, ...members.map((m) => m.userId)];
+  const inside = [...subtree];
+  await db.$transaction([
+    db.materialFolder.update({ where: { id: folder.id }, data: { parentId, rootId: newRoot } }),
+    db.materialFolder.updateMany({ where: { id: { in: inside.filter((id) => id !== folder.id) } }, data: { rootId: newRoot ?? folder.id } }),
+    db.planExercise.deleteMany({ where: { exercise: { folderId: { in: inside } }, plan: { userId: { notIn: allowed } } } }),
+  ]);
+}
+
+/**
  * Elimina la cartella con le sottocartelle e i file: su Drive va nel cestino,
  * nel sito sparisce per tutti. Una principale condivisa avvisa i membri.
  */

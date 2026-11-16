@@ -11,6 +11,7 @@ import {
   Folder,
   FolderPlus,
   Inbox,
+  Info,
   Layers,
   Pencil,
   Plus,
@@ -21,7 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import {
   Button,
   ColorPicker,
@@ -98,8 +99,65 @@ function restoreBody(p: PlanDTO) {
 }
 
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** Piani di una cartella con tutte le sottocartelle. */
+const totalPlans = (node: FolderNode): number => node.planCount + node.children.reduce((n, c) => n + totalPlans(c), 0);
+
+/** "3 h 45'" oppure "45'". */
+const hoursLabel = (min: number) => (min >= 60 ? `${Math.floor(min / 60)} h${min % 60 ? ` ${min % 60}’` : ""}` : `${min}’`);
 function describe(folders: number, plans: number) {
   return [folders && count(folders, "cartella", "cartelle"), plans && count(plans, "piano", "piani")].filter(Boolean).join(" e ");
+}
+
+function InfoRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="grid grid-cols-[9rem_minmax(0,1fr)] gap-3 py-2 max-sm:grid-cols-1 max-sm:gap-0.5">
+      <dt className="text-muted">{label}</dt>
+      <dd className="min-w-0">{children}</dd>
+    </div>
+  );
+}
+
+/** Le informazioni di una cartella di piani: dove sta, quanti piani, quante ore, quali date. */
+function FolderInfoDialog({ folder, path, all, onClose }: { folder: FolderNode; path: FolderNode[]; all: PlanSummary[]; onClose: () => void }) {
+  const ids = new Set([folder.id, ...descendantIds(folder)]);
+  const inside = all.filter((p) => p.folderId && ids.has(p.folderId));
+  const dates = inside.map((p) => p.date).filter((d): d is string => !!d).sort();
+  const minutes = inside.reduce((n, p) => n + p.totalMin, 0);
+  const last = inside.reduce<PlanSummary | null>((a, p) => (!a || p.updatedAt > a.updatedAt ? p : a), null);
+  const undated = inside.length - dates.length;
+  return (
+    <Dialog open onClose={onClose} title={`Informazioni su «${folder.name}»`}>
+      <dl className="divide-y divide-line text-[14px]">
+        <InfoRow label="Percorso">Piano Lezione / {path.map((p) => p.name).join(" / ")}</InfoRow>
+        {folder.schoolYearId && (
+          <InfoRow label="Anno scolastico">Cartella dell&apos;anno: i piani copiati qui dentro vengono riportati in quell&apos;anno.</InfoRow>
+        )}
+        <InfoRow label="Contenuto">
+          {count(inside.length, "piano", "piani")}
+          {folder.children.length > 0 && ` · ${count(ids.size - 1, "sottocartella", "sottocartelle")}`}
+          {ids.size > 1 && <span className="block text-[13px] text-muted">Qui dentro, senza le sottocartelle: {count(folder.planCount, "piano", "piani")}</span>}
+        </InfoRow>
+        <InfoRow label="Tempo pianificato">{inside.length ? hoursLabel(minutes) : "—"}</InfoRow>
+        <InfoRow label="Lezioni">
+          {dates.length ? (dates[0] === dates.at(-1) ? humanDate(dates[0]) : `dal ${humanDate(dates[0])} al ${humanDate(dates.at(-1)!)}`) : "Nessuna data"}
+          {dates.length > 0 && undated > 0 && <span className="block text-[13px] text-muted">{count(undated, "piano", "piani")} senza data</span>}
+        </InfoRow>
+        <InfoRow label="Ultima modifica">
+          {last ? (
+            <>
+              {last.title || "Senza titolo"}
+              <span className="block text-[13px] text-muted">
+                {new Date(last.updatedAt).toLocaleString("it-CH", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+              </span>
+            </>
+          ) : (
+            "—"
+          )}
+        </InfoRow>
+      </dl>
+    </Dialog>
+  );
 }
 
 export default function PianoLezionePage() {
@@ -119,6 +177,9 @@ export default function PianoLezionePage() {
   const [picked, setPicked] = useState<Picked>(empty);
   const [clipboard, setClipboardState] = useState<Clipboard | null>(clipboardStore.current);
   const [proposal, setProposal] = useState<ProposalDTO | null>(null);
+  const [showInfo, setShowInfo] = useState(false);
+  // Ricerca in tutti i piani (sul server: titolo, obiettivi, fasi, classe…), legata al testo cercato.
+  const [found, setFound] = useState<{ q: string; plans: PlanSummary[] } | null>(null);
   const undoStack = useRef<Undo[]>([]);
   const anchor = useRef<number | null>(null);
 
@@ -155,6 +216,24 @@ export default function PianoLezionePage() {
     if (folderParam) setSelected(folderParam);
   }
 
+  const searchText = query.trim();
+  useEffect(() => {
+    if (!searchText) return;
+    let stale = false;
+    const t = setTimeout(
+      () =>
+        api.get<PlanSummary[]>(`/api/plans?q=${encodeURIComponent(searchText)}`).then(
+          (p) => !stale && setFound({ q: searchText, plans: p }),
+          () => !stale && setFound({ q: searchText, plans: [] }),
+        ),
+      200,
+    );
+    return () => {
+      stale = true;
+      clearTimeout(t);
+    };
+  }, [searchText]);
+
   const tree = useMemo(() => buildTree(folders ?? []), [folders]);
   const flat = useMemo(() => flattenTree(tree), [tree]);
   const current = flat.find((f) => f.id === selected);
@@ -163,12 +242,14 @@ export default function PianoLezionePage() {
   const selection: Selection = selected === "all" || selected === "none" || current ? selected : "all";
   const q = query.trim().toLowerCase();
   const subfolders = selection !== "all" && selection !== "none" && !q ? (current?.children ?? []) : [];
-  const visible = (plans ?? []).filter((p) => {
-    if (q && !p.title.toLowerCase().includes(q)) return false;
-    if (selection === "all") return true;
-    if (selection === "none") return p.folderId === null;
-    return p.folderId === selection;
-  });
+  const results = q && found?.q === searchText ? found.plans : null;
+  const visible = q
+    ? (results ?? [])
+    : (plans ?? []).filter((p) => {
+        if (selection === "all") return true;
+        if (selection === "none") return p.folderId === null;
+        return p.folderId === selection;
+      });
   // Elenco della colonna di destra: prima le sottocartelle, poi i piani.
   const items: { kind: "folder" | "plan"; id: string }[] = [
     ...subfolders.map((f) => ({ kind: "folder" as const, id: f.id })),
@@ -501,7 +582,7 @@ export default function PianoLezionePage() {
             )}
             <span className="truncate">{node.name}</span>
           </button>
-          <span className="tabular text-xs text-muted group-focus-within:hidden group-hover:hidden">{node.planCount || ""}</span>
+          <span className="tabular text-xs text-muted group-focus-within:hidden group-hover:hidden">{totalPlans(node) || ""}</span>
           <span className="hidden group-focus-within:flex group-hover:flex">
             <IconButton label={`Nuova sottocartella in ${node.name}`} className="size-6" onClick={() => setDraft({ name: "", color: node.color, parentId: node.id })}>
               <FolderPlus className="size-3.5" />
@@ -519,7 +600,10 @@ export default function PianoLezionePage() {
   // Destinazioni valide per una cartella in modifica: non sé stessa né le sue discendenti.
   const editing = draft?.id ? flat.find((f) => f.id === draft.id) : undefined;
   const blocked = new Set(editing ? [editing.id, ...descendantIds(editing)] : []);
-  const title = selection === "all" ? "Tutti i piani" : selection === "none" ? "Senza cartella" : current!.name;
+  const title = q ? `Risultati per «${searchText}»` : selection === "all" ? "Tutti i piani" : selection === "none" ? "Senza cartella" : current!.name;
+  // Dalla cartella principale a quella aperta.
+  const path: FolderNode[] = [];
+  for (let f = current; f; f = f.parentId ? flat.find((x) => x.id === f!.parentId) : undefined) path.unshift(f);
   const mod = modLabel();
   const target = pasteTarget(clipboard);
 
@@ -567,20 +651,40 @@ export default function PianoLezionePage() {
         </nav>
 
         <section>
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="flex items-center gap-2 font-display text-xl font-semibold">
-              {current?.schoolYearId && <CalendarRange className="size-5 text-accent" aria-hidden />}
-              {title}
-            </h2>
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+            <div className="min-w-0">
+              {!q && path.length > 1 && (
+                <nav aria-label="Percorso" className="mb-0.5 flex flex-wrap items-center gap-0.5 text-[13px] text-muted">
+                  {path.slice(0, -1).map((p) => (
+                    <span key={p.id} className="flex items-center gap-0.5">
+                      <button type="button" onClick={() => openFolder(p.id)} className="max-w-48 truncate rounded px-1 hover:bg-sunken hover:text-ink">
+                        {p.name}
+                      </button>
+                      <ChevronRight className="size-3.5" aria-hidden />
+                    </span>
+                  ))}
+                </nav>
+              )}
+              <h2 className="flex items-center gap-2 font-display text-xl font-semibold">
+                {!q && current?.schoolYearId && <CalendarRange className="size-5 text-accent" aria-hidden />}
+                <span className="truncate">{title}</span>
+                {!q && current && (
+                  <IconButton label={`Informazioni su ${current.name}`} onClick={() => setShowInfo(true)}>
+                    <Info className="size-4" />
+                  </IconButton>
+                )}
+              </h2>
+            </div>
             <label className="relative">
               <Search className="pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted" aria-hidden />
               <Input
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Cerca per titolo"
-                aria-label="Cerca per titolo"
-                className="w-56 pl-8"
+                placeholder="Cerca in tutti i piani"
+                aria-label="Cerca in tutti i piani: titolo, obiettivi, fasi, classe…"
+                title="Cerca nel titolo, negli obiettivi, nelle fasi, nella verifica, nelle note, nella classe e nella materia"
+                className="w-64 pl-8"
               />
             </label>
           </div>
@@ -627,7 +731,9 @@ export default function PianoLezionePage() {
             </div>
           )}
 
-          {items.length === 0 ? (
+          {q && !results ? (
+            <Loading />
+          ) : items.length === 0 ? (
             <EmptyState
               title={q ? "Nessun piano trovato" : "Nessun piano qui"}
               action={
@@ -645,7 +751,9 @@ export default function PianoLezionePage() {
                 )
               }
             >
-              {q ? `Nessun titolo contiene "${query.trim()}".` : "Crea un piano, trascinane uno su questa cartella oppure incollalo qui."}
+              {q
+                ? `Nessun piano contiene «${searchText}» (nel titolo, negli obiettivi, nelle fasi, nella classe…).`
+                : "Crea un piano, trascinane uno su questa cartella oppure incollalo qui."}
             </EmptyState>
           ) : (
             <ul
@@ -680,7 +788,7 @@ export default function PianoLezionePage() {
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-medium">{f.name}</span>
                         <span className="block text-[13px] text-muted">
-                          {[f.children.length && count(f.children.length, "sottocartella", "sottocartelle"), count(f.planCount, "piano", "piani")]
+                          {[f.children.length && count(f.children.length, "sottocartella", "sottocartelle"), count(totalPlans(f), "piano", "piani")]
                             .filter(Boolean)
                             .join(" · ")}
                         </span>
@@ -711,7 +819,7 @@ export default function PianoLezionePage() {
                         {[
                           p.date ? humanDate(p.date) : "Senza data",
                           `${p.phaseCount} ${p.phaseCount === 1 ? "fase" : "fasi"} · ${p.totalMin}’`,
-                          selection === "all" && folder?.name,
+                          (selection === "all" || q) && (folder?.name ?? (q ? "Senza cartella" : null)),
                         ]
                           .filter(Boolean)
                           .join(" · ")}
@@ -817,6 +925,10 @@ export default function PianoLezionePage() {
           ))}
         </ul>
       </Dialog>
+
+      {showInfo && current && (
+        <FolderInfoDialog folder={current} path={path} all={plans} onClose={() => setShowInfo(false)} />
+      )}
 
       <YearProposalDialog
         proposal={proposal}
