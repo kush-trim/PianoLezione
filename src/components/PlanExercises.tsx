@@ -44,7 +44,7 @@ export function FileIcon({ fileName, className = "size-4" }: { fileName: string;
 }
 
 /**
- * Carica uno o più file su Google Drive, nella cartella indicata (predefinita: "I miei esercizi");
+ * Carica uno o più file su Google Drive, nella cartella indicata (predefinita: "I miei file");
  * con planId li collega subito al piano.
  */
 export async function uploadExercises(
@@ -61,7 +61,7 @@ export async function uploadExercises(
   return data;
 }
 
-/** Scelta di un esercizio già caricato da collegare al piano. */
+/** Scelta di un file già caricato da collegare al piano. */
 function ExercisePicker({
   open,
   linked,
@@ -84,15 +84,15 @@ function ExercisePicker({
     (e) => !linked.includes(e.id) && (!needle || e.title.toLowerCase().includes(needle) || e.fileName.toLowerCase().includes(needle)),
   );
   return (
-    <Dialog open={open} onClose={onClose} title="Collega un esercizio">
+    <Dialog open={open} onClose={onClose} title="Collega un file">
       <label className="relative mb-3 block">
         <Search className="pointer-events-none absolute top-2.5 left-2.5 size-4 text-muted" aria-hidden />
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cerca negli esercizi" className="pl-8" autoFocus />
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cerca nei file" className="pl-8" autoFocus />
       </label>
       {!all ? (
         <Loading />
       ) : list.length === 0 ? (
-        <EmptyState title={all.length ? "Nessun esercizio trovato" : "Nessun esercizio caricato"}>
+        <EmptyState title={all.length ? "Nessun file trovato" : "Nessun file caricato"}>
           {all.length ? "Prova con un'altra parola." : "Caricane uno con «Carica file»: va sul tuo Google Drive."}
         </EmptyState>
       ) : (
@@ -123,7 +123,7 @@ function ExercisePicker({
   );
 }
 
-/** Gli esercizi (file) collegati a un piano: aprire, collegare, caricare, scollegare. */
+/** I file collegati a un piano: aprire, collegare, caricare, scollegare. */
 export function PlanExercises({
   planId,
   exercises,
@@ -191,7 +191,7 @@ export function PlanExercises({
     try {
       await api.del(`/api/exercises/${e.id}/plans/${planId}`);
       onChange(exercises.filter((x) => x.id !== e.id));
-      toast(`"${e.title}" scollegato: resta negli Esercizi`);
+      toast(`"${e.title}" scollegato: resta in File`);
     } catch (err) {
       toast(errorMessage(err), "error");
     }
@@ -207,7 +207,7 @@ export function PlanExercises({
       }}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-semibold">Esercizi</h2>
+        <h2 className="font-semibold">File</h2>
         <div className="flex gap-1.5">
           <Button size="sm" variant="ghost" onClick={() => setPicking(true)}>
             <Link2 className="size-3.5" /> Collega esistente
@@ -241,7 +241,7 @@ export function PlanExercises({
       </div>
       {exercises.length === 0 ? (
         <p className="mt-1.5 rounded-md border border-dashed border-line-strong px-3 py-2 text-muted">
-          Nessun esercizio. Trascina qui un file (PDF, Word, Excel, PowerPoint, immagini…): va su Google Drive. Oppure collegane uno già caricato, anche da una cartella condivisa.
+          Nessun file. Trascinane qui uno (PDF, Word, Excel, PowerPoint, immagini…): va su Google Drive. Oppure collegane uno già caricato, anche da una cartella condivisa.
         </p>
       ) : (
         <ul className="mt-1.5 divide-y divide-line rounded-md border border-line bg-surface">

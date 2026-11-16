@@ -209,7 +209,7 @@ export default function ImpostazioniPage() {
       <PageHeader title="Impostazioni" subtitle="Le regole con cui l’app prepara lezioni e piani." />
 
       <div className="max-w-4xl space-y-5">
-        <Section title="Account Google" description="Accedi a PianoStudio con questo account Google. Gli esercizi che carichi vanno sul suo Google Drive.">
+        <Section title="Account Google" description="Accedi a PianoStudio con questo account Google. I file che carichi vanno sul suo Google Drive.">
           <GoogleAccountBox />
         </Section>
 
@@ -258,7 +258,7 @@ export default function ImpostazioniPage() {
 
         <Section
           title="Anno scolastico"
-          description="Serve a numerare le settimane; nei giorni di vacanza le lezioni non compaiono. Ogni anno nuovo ha la sua cartella in Cartelle: i piani copiati lì dentro vengono riportati in quell'anno."
+          description="Serve a numerare le settimane; nei giorni di vacanza le lezioni non compaiono. Ogni anno nuovo ha la sua cartella in Piano Lezione: i piani copiati lì dentro vengono riportati in quell'anno."
         >
           <ul className="divide-y divide-line rounded-lg border border-line">
             {years.map((y) => (
@@ -282,7 +282,7 @@ export default function ImpostazioniPage() {
             submitLabel="Aggiungi anno"
             onAdd={(p) =>
               api.post("/api/school-years", p).then(() => {
-                toast(`Anno ${p.name} creato, con la sua cartella in Cartelle`);
+                toast(`Anno ${p.name} creato, con la sua cartella in Piano Lezione`);
                 loadLists();
               })
             }
@@ -444,7 +444,7 @@ export default function ImpostazioniPage() {
           <ApiTokens />
         </Section>
 
-        <Section title="Copia di sicurezza" description="Tutti i tuoi dati (piani, cartelle, orario, anni, vacanze, eventi, verbi) in un file JSON. Senza token, chiavi e file degli esercizi (che sono su Google Drive).">
+        <Section title="Copia di sicurezza" description="Tutti i tuoi dati (piani, cartelle, orario, anni, vacanze, eventi, verbi) in un file JSON. Senza token, chiavi e file (che sono su Google Drive).">
           <Backup />
         </Section>
       </div>

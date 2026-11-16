@@ -7,7 +7,7 @@ import type { MaterialFolderDTO } from "@/lib/types";
 import { Button, Dialog, ErrorNote, IconButton, Input, useToast } from "./ui";
 
 /**
- * Chi ha accesso a una cartella di esercizi. Il proprietario invita per email Google,
+ * Chi ha accesso a una cartella di file. Il proprietario invita per email Google,
  * ritira gli inviti e toglie i membri; un membro vede chi c'è e può uscire.
  */
 export function ShareDialog({

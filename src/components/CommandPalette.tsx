@@ -13,15 +13,15 @@ type Result = { key: string; group: string; label: string; hint?: string; icon: 
 
 const PAGES: { label: string; href: string; icon: LucideIcon; words: string }[] = [
   { label: "Settimana", href: "/settimana", icon: CalendarDays, words: "orario calendario lezioni" },
-  { label: "Cartelle", href: "/cartelle", icon: FolderTree, words: "piani" },
-  { label: "Esercizi", href: "/esercizi", icon: Paperclip, words: "pdf file schede" },
+  { label: "Piano Lezione", href: "/piani", icon: FolderTree, words: "piani cartelle" },
+  { label: "File", href: "/file", icon: Paperclip, words: "esercizi pdf schede drive" },
   { label: "Modelli", href: "/modelli", icon: LayoutTemplate, words: "template" },
   { label: "Nuovo piano (creazione guidata)", href: "/piani/nuovo", icon: Plus, words: "crea" },
   { label: "Impostazioni", href: "/impostazioni", icon: Settings, words: "anno vacanze verbi" },
   { label: "Impostazioni · Accesso API", href: "/impostazioni#api", icon: Settings, words: "token" },
 ];
 
-/** Ricerca rapida (⌘K / Ctrl+K): pagine, cartelle, piani ed esercizi. */
+/** Ricerca rapida (⌘K / Ctrl+K): pagine, cartelle, piani e file. */
 export function CommandPalette() {
   const router = useRouter();
   const ref = useRef<HTMLDialogElement>(null);
@@ -53,7 +53,7 @@ export function CommandPalette() {
     if (!open && el.open) el.close();
   }, [open]);
 
-  // Piani ed esercizi si cercano sul server mentre si scrive.
+  // Piani e file si cercano sul server mentre si scrive.
   useEffect(() => {
     if (!open) return;
     let stale = false;
@@ -90,11 +90,11 @@ export function CommandPalette() {
     })),
     ...(term ? folders.filter((f) => f.name.toLowerCase().includes(term)).slice(0, 6) : []).map((f) => ({
       key: `folder-${f.id}`,
-      group: "Cartelle",
+      group: "Cartelle dei piani",
       label: f.name,
       hint: f.planCount ? `${f.planCount} piani` : undefined,
       icon: Folder,
-      go: go(`/cartelle?folder=${f.id}`),
+      go: go(`/piani?folder=${f.id}`),
     })),
     ...plans.map((p) => ({
       key: `plan-${p.id}`,
@@ -106,7 +106,7 @@ export function CommandPalette() {
     })),
     ...exercises.map((x) => ({
       key: `ex-${x.id}`,
-      group: "Esercizi",
+      group: "File",
       label: x.title,
       hint: x.fileName,
       icon: null,
@@ -147,7 +147,7 @@ export function CommandPalette() {
                   results[current].go();
                 }
               }}
-              placeholder="Cerca piani, cartelle, esercizi, pagine…"
+              placeholder="Cerca piani, cartelle, file, pagine…"
               aria-label="Cerca"
               className="h-12 w-full bg-transparent text-[15px] outline-none focus-visible:outline-none"
             />

@@ -15,7 +15,7 @@ export const GET = route(async (req) => {
 });
 
 // POST /api/exercises → modulo con uno o più "file", "folderId" facoltativo (predefinita:
-// "I miei esercizi"), "title" facoltativo (solo con un file), "planId" per collegarli subito
+// "I miei file"), "title" facoltativo (solo con un file), "planId" per collegarli subito
 // e "tag" (anche più volte) per le etichette.
 // I file vanno su Google Drive, nella cartella scelta.
 export const POST = route(async (req) => {

@@ -11,8 +11,8 @@ import { cx, modLabel, ToastProvider } from "./ui";
 
 const NAV = [
   { href: "/settimana", label: "Settimana", icon: CalendarDays },
-  { href: "/cartelle", label: "Cartelle", icon: FolderTree },
-  { href: "/esercizi", label: "Esercizi", icon: Paperclip },
+  { href: "/piani", label: "Piano Lezione", icon: FolderTree },
+  { href: "/file", label: "File", icon: Paperclip },
   { href: "/modelli", label: "Modelli", icon: LayoutTemplate },
   { href: "/impostazioni", label: "Impostazioni", icon: Settings },
 ];

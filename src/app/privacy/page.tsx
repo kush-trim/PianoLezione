@@ -22,7 +22,7 @@ export default function PrivacyPage() {
       <h2 className="mt-6 text-lg font-semibold">Google Drive</h2>
       <p className="mt-1">
         PianoStudio chiede il permesso <em>drive.file</em>: può vedere e modificare solo i file e le cartelle che crea lei
-        (la cartella «PianoStudio» sul tuo Drive e il suo contenuto), non il resto del tuo Drive. I file degli esercizi che carichi
+        (la cartella «PianoStudio» sul tuo Drive e il suo contenuto), non il resto del tuo Drive. I file che carichi
         vengono salvati lì. Quando condividi una cartella con un collega, PianoStudio la condivide con il suo account Google su Drive;
         quando lo togli, la condivisione viene tolta.
       </p>
@@ -34,8 +34,8 @@ export default function PrivacyPage() {
 
       <h2 className="mt-6 text-lg font-semibold">I tuoi dati nel sito</h2>
       <p className="mt-1">
-        Piani lezione, orario, cartelle ed eventi restano sul server di PianoStudio, visibili solo a te. Dei file degli esercizi il sito
-        conserva nome, tipo, dimensione e il collegamento a Drive. Nessun dato viene venduto o usato per pubblicità.
+        Piani lezione, orario, cartelle ed eventi restano sul server di PianoStudio, visibili solo a te. Dei file che carichi il sito
+        conserva solo nome, tipo, dimensione e il collegamento a Drive. Nessun dato viene venduto o usato per pubblicità.
         Dalle Impostazioni puoi scaricare una copia di tutti i tuoi dati.
       </p>
 

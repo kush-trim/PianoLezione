@@ -1,6 +1,6 @@
 # PianoStudio
 
-Sito per creare i piani lezione (modello "Alcuni aspetti del piano lezione"): editor interattivo, orari delle fasi calcolati dall'orario di insegnamento, cartelle, esercizi su Google Drive con cartelle condivise tra docenti, versioni ed export in PDF.
+Sito per creare i piani lezione (modello "Alcuni aspetti del piano lezione"): editor interattivo, orari delle fasi calcolati dall'orario di insegnamento, cartelle, file su Google Drive con cartelle condivise tra docenti, versioni ed export in PDF.
 
 ## Avvio
 
@@ -15,12 +15,12 @@ Si entra solo con **Accedi con Google** (per la configurazione vedi [Accesso con
 
 1. **Settimana** – tutta in una schermata. Fai clic su un punto della griglia per aggiungere una lezione: si ripete ogni settimana da lì in poi. Un clic su una lezione ne mostra i dettagli, il piano collegato e le modifiche valide per quel solo giorno (spostamento, aula, annullamento). In alto, l'anno scolastico con le settimane numerate. Nei giorni di vacanza le lezioni non compaiono; un evento (una gita, la settimana bianca) può durare uno o più giorni e togliere le lezioni di una classe o di tutte. Il filtro mostra una sola classe, il pulsante ⓘ quante lezioni restano fino alla fine dell'anno. Frecce ←/→ e T per muoversi.
 2. **Nuovo piano** – la creazione guidata in cinque passi: lezione, punto di partenza, obiettivi (con i verbi dell'elenco), fasi, verifica.
-3. Nell'editor gli orari delle fasi si ricalcolano a ogni modifica. Superare la durata prevista è ammesso: viene solo segnalato. In fondo, **Esercizi** collegati e la nota **Dopo la lezione**, che ricompare in cima al piano della lezione successiva della stessa classe.
+3. Nell'editor gli orari delle fasi si ricalcolano a ogni modifica. Superare la durata prevista è ammesso: viene solo segnalato. In fondo, i **File** collegati e la nota **Dopo la lezione**, che ricompare in cima al piano della lezione successiva della stessa classe.
 4. **Esporta PDF** produce il documento nel formato del modello.
-5. **Cartelle** – come nel Finder: clic per selezionare, doppio clic per aprire, ⌘/Ctrl + C, X, V, D, Z, A, Canc. Copiando una cartella si copia tutto il contenuto. Ogni anno scolastico nuovo ha la sua cartella ("Anno 2027/2028"): i piani copiati lì (anche in una sottocartella con il nome della classe) vengono riportati in quell'anno, con la settimana proposta in base all'anno precedente.
-6. **Esercizi** – file (PDF, Word, Excel, PowerPoint, immagini…) da collegare a nessuno, uno o più piani. Il sito fa da ponte: i file finiscono sul Google Drive di chi possiede la cartella, nella cartella `PianoStudio`. Ognuno ha "I miei esercizi" e può creare altre cartelle, con **sottocartelle** a più livelli, e **condividerle**: inviti un collega con la sua email Google, lui accetta da **Notifiche** (la campanella) e la cartella è condivisa tra voi, anche su Drive. Chi è nella cartella vede i file, ne carica altri e li collega ai propri piani; rinominare, condividere ed eliminare la cartella spetta al proprietario. Si condivide la cartella principale: le sottocartelle seguono. I file si spostano tra le cartelle dello stesso Drive e hanno **etichette** (Teoria, Esercizi, Soluzioni, Extra per gli allievi più veloci, o libere) per filtrarli; ⓘ su un file dice chi l'ha caricato, quando, dove sta e in quali piani è usato. Una cartella condivisa da un collega si può **copiare sul proprio Drive** con sottocartelle e file; ⓘ mostra le informazioni di una cartella (percorso, proprietario, chi la vede, contenuto, spazio) e in fondo all'elenco c'è lo spazio occupato su Drive. Eliminare manda nel cestino di Drive.
+5. **Piano Lezione** (`/piani`) – i piani in cartelle, come nel Finder: clic per selezionare, doppio clic per aprire, ⌘/Ctrl + C, X, V, D, Z, A, Canc. Copiando una cartella si copia tutto il contenuto. Ogni anno scolastico nuovo ha la sua cartella ("Anno 2027/2028"): i piani copiati lì (anche in una sottocartella con il nome della classe) vengono riportati in quell'anno, con la settimana proposta in base all'anno precedente.
+6. **File** (`/file`) – file (PDF, Word, Excel, PowerPoint, immagini…) da collegare a nessuno, uno o più piani. Il sito fa da ponte: i file finiscono sul Google Drive di chi possiede la cartella, nella cartella `PianoStudio`. Ognuno ha "I miei file" e può creare altre cartelle, con **sottocartelle** a più livelli, e **condividerle**: inviti un collega con la sua email Google, lui accetta da **Notifiche** (la campanella) e la cartella è condivisa tra voi, anche su Drive. Chi è nella cartella vede i file, ne carica altri e li collega ai propri piani; rinominare, condividere ed eliminare la cartella spetta al proprietario. Si condivide la cartella principale: le sottocartelle seguono. I file si spostano tra le cartelle dello stesso Drive e hanno **etichette** (Teoria, Esercizi, Soluzioni, Extra per gli allievi più veloci, o libere) per filtrarli; ⓘ su un file dice chi l'ha caricato, quando, dove sta e in quali piani è usato. Una cartella condivisa da un collega si può **copiare sul proprio Drive** con sottocartelle e file; ⓘ mostra le informazioni di una cartella (percorso, proprietario, chi la vede, contenuto, spazio) e in fondo all'elenco c'è lo spazio occupato su Drive. Eliminare manda nel cestino di Drive.
 7. **Impostazioni** – account Google e permesso per Drive, durata dell'ora di lezione, anno scolastico e vacanze (a mano o importate dal PDF del calendario scolastico del Cantone Ticino), verbi per gli obiettivi, assistente AI (Claude, Gemini o OpenAI con la propria chiave), calendari iCal in sola lettura, link per abbonarsi all'orario da un altro calendario, token per le API, copia di sicurezza dei dati.
-8. **⌘K / Ctrl+K** da qualsiasi pagina: ricerca rapida di piani, cartelle, esercizi e pagine.
+8. **⌘K / Ctrl+K** da qualsiasi pagina: ricerca rapida di piani, cartelle, file e pagine.
 
 Il file `.env` contiene anche `APP_SECRET`: serve a cifrare nel database i token di Google, le chiavi AI e i link dei calendari. In sviluppo può restare vuota; in produzione è obbligatoria (lo script di deploy la genera sul server).
 
@@ -48,17 +48,17 @@ Il token di Google resta sul server, cifrato. Nelle cartelle condivise il sito l
 
 ## Struttura
 
-- `prisma/schema.prisma` – modello dati (utenti, account Google, sessioni, token, cartelle, orario, eventi, piani, fasi, versioni, esercizi, cartelle di esercizi con membri e inviti, notifiche)
+- `prisma/schema.prisma` – modello dati (utenti, account Google, sessioni, token, cartelle, orario, eventi, piani, fasi, versioni, file (`Exercise`), cartelle di file con membri e inviti, notifiche)
 - `src/lib/schedule.ts` – motore orari: funzioni pure, con test in `schedule.test.ts`
 - `src/lib/calendar.ts` – lezioni ricorrenti, modifiche di un giorno, vacanze ed eventi che tolgono lezioni, lezioni rimaste, settimane dell'anno scolastico (test in `calendar.test.ts`)
 - `src/lib/school-calendar.ts` – lettura del calendario scolastico ufficiale (PDF → anno e vacanze); `src/lib/year-proposal.ts` – settimana proposta per i piani copiati nel nuovo anno
 - `src/lib/google-oauth.ts` – accesso con Google (OAuth con PKCE); `google-account.ts` – utente collegato all'account Google; `google-drive.ts` – Google Drive (e il Drive finto per le prove)
-- `src/lib/materials.ts` – cartelle di esercizi, inviti, membri, notifiche; `src/lib/exercises.ts`, `file-types.ts` – esercizi e tipi di file ammessi; `src/lib/ical-export.ts` – il link del calendario da abbonare
+- `src/lib/materials.ts` – cartelle di file, inviti, membri, notifiche; `src/lib/exercises.ts`, `file-types.ts` – i file (nel codice e nelle API si chiamano ancora "exercises") e i tipi ammessi; `tags.ts` – etichette; `folder-copy.ts` – copia di una cartella sul proprio Drive; `src/lib/ical-export.ts` – il link del calendario da abbonare
 - `src/lib/ical.ts` – lettura dei calendari esterni; `src/lib/ai.ts`, `ai-proposal.ts` – assistente; `src/lib/crypto.ts` – cifratura
 - `src/lib/plans.ts`, `auth.ts`, `http.ts`, `validation.ts` – logica lato server
 - `src/lib/pdf/PianoLezionePdf.tsx` – layout del PDF
 - `src/app/api/` – API REST
-- `src/app/(app)/` – pagine: `settimana`, `cartelle`, `esercizi`, `modelli`, `notifiche`, `impostazioni`, `piani/nuovo`, `piani/[id]`; fuori dall'app `login` e `privacy`
+- `src/app/(app)/` – pagine: `settimana`, `piani` (Piano Lezione), `file`, `modelli`, `notifiche`, `impostazioni`, `piani/nuovo`, `piani/[id]`; fuori dall'app `login` e `privacy`
 - `src/components/` – editor (tabella delle fasi, barra dei tempi), griglia settimanale, componenti di base
 
 ## API

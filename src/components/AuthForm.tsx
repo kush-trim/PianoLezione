@@ -24,7 +24,7 @@ function GoogleMark() {
   );
 }
 
-/** Accesso: solo con Google. Chi entra con Google ha già il suo Drive collegato per gli esercizi. */
+/** Accesso: solo con Google. Chi entra con Google ha già il suo Drive collegato per i file. */
 export function AuthForm() {
   const params = useSearchParams();
   const error = ERRORS[params.get("errore") ?? ""] ?? (params.get("errore") ? ERRORS.google : "");
@@ -50,7 +50,7 @@ export function AuthForm() {
           </a>
           <ErrorNote>{error}</ErrorNote>
           <p className="text-[13px] leading-relaxed text-muted">
-            Google chiede anche il permesso per Google Drive: i file degli esercizi che carichi finiscono in una cartella
+            Google chiede anche il permesso per Google Drive: i file che carichi finiscono in una cartella
             «PianoStudio» sul tuo Drive. L’app vede solo i file e le cartelle che crea lei.
           </p>
         </div>

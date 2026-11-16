@@ -9,7 +9,9 @@ import { DriveNotAuthorized, driveFor } from "./google-drive";
 import { ApiError, notFound } from "./http";
 import type { FoldersDTO, InviteDTO, MaterialFolderDTO, NotificationDTO, NotificationsDTO, StorageDTO } from "./types";
 
-export const DEFAULT_FOLDER_NAME = "I miei esercizi";
+export const DEFAULT_FOLDER_NAME = "I miei file";
+/** Il nome di prima: le cartelle personali nate con questo nome vengono rinominate. */
+const OLD_DEFAULT_FOLDER_NAME = "I miei esercizi";
 
 // --- Accesso ---
 
@@ -61,9 +63,19 @@ async function assertFreeName(name: string, where: { ownerId: string; parentId: 
 
 // --- Cartelle ---
 
-/** "I miei esercizi": creata la prima volta che serve (sul Drive dell'utente). */
+/** "I miei file": creata la prima volta che serve (sul Drive dell'utente). */
 export async function ensureDefaultFolder(userId: string) {
   const existing = await db.materialFolder.findFirst({ where: { ownerId: userId, isDefault: true } });
+  if (existing?.name === OLD_DEFAULT_FOLDER_NAME) {
+    // La sezione Esercizi è diventata File: anche la cartella personale cambia nome, su Drive e qui.
+    // Se Drive non risponde si riprova la prossima volta; intanto va bene il nome vecchio.
+    try {
+      await driveFor(userId).rename(existing.driveFolderId, DEFAULT_FOLDER_NAME);
+      return await db.materialFolder.update({ where: { id: existing.id }, data: { name: DEFAULT_FOLDER_NAME } });
+    } catch {
+      return existing;
+    }
+  }
   if (existing) return existing;
   const drive = driveFor(userId);
   const root = await drive.appFolder();

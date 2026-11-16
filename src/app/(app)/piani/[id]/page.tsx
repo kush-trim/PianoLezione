@@ -273,8 +273,8 @@ export default function PlanEditorPage() {
       <EmptyState
         title="Piano non trovato"
         action={
-          <Link href="/cartelle">
-            <Button>Vai alle cartelle</Button>
+          <Link href="/piani">
+            <Button>Vai a Piano Lezione</Button>
           </Link>
         }
       >
@@ -344,7 +344,7 @@ export default function PlanEditorPage() {
     dirtyRef.current = false;
     try {
       await api.del(`/api/plans/${plan!.id}`);
-      router.push(plan!.isTemplate ? "/modelli" : "/cartelle");
+      router.push(plan!.isTemplate ? "/modelli" : "/piani");
     } catch (e) {
       toast(errorMessage(e), "error");
     }

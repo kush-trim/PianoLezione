@@ -102,7 +102,7 @@ function describe(folders: number, plans: number) {
   return [folders && count(folders, "cartella", "cartelle"), plans && count(plans, "piano", "piani")].filter(Boolean).join(" e ");
 }
 
-export default function CartellePage() {
+export default function PianoLezionePage() {
   const router = useRouter();
   const params = useSearchParams();
   const toast = useToast();
@@ -526,8 +526,8 @@ export default function CartellePage() {
   return (
     <>
       <PageHeader
-        title="Cartelle"
-        subtitle="Organizza i piani lezione come preferisci: per materia, classe, anno…"
+        title="Piano Lezione"
+        subtitle="Tutti i tuoi piani lezione, in cartelle organizzate come preferisci: per materia, classe, anno…"
         actions={
           <>
             <Button onClick={() => setDraft({ name: "", color: "teal", parentId: current?.id ?? null })}>
@@ -541,7 +541,7 @@ export default function CartellePage() {
       />
 
       <div className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
-        <nav aria-label="Cartelle" className="self-start rounded-xl border border-line bg-surface p-2">
+        <nav aria-label="Cartelle dei piani" className="self-start rounded-xl border border-line bg-surface p-2">
           <ul>
             <li>
               <button type="button" onClick={() => openFolder("all")} className={cx(rowClass("all"), "pl-2")}>

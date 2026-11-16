@@ -299,7 +299,7 @@ export type FolderCopyDTO = { id: string; name: string; folders: number; files: 
 export type MaterialFolderDTO = {
   id: string;
   name: string;
-  /** "I miei esercizi": la cartella personale, che non si elimina. */
+  /** "I miei file": la cartella personale, che non si elimina. */
   isDefault: boolean;
   /** La cartella che la contiene; null per le cartelle principali. */
   parentId: string | null;

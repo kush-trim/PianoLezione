@@ -163,7 +163,7 @@ async function readUpload(file: File): Promise<{ data: Uint8Array; mime: string;
 }
 
 /**
- * Carica i file su Google Drive, nella cartella indicata (o in "I miei esercizi").
+ * Carica i file su Google Drive, nella cartella indicata (o in "I miei file").
  * In una cartella condivisa il file va sul Drive del proprietario della cartella.
  */
 export async function uploadExercises(
@@ -240,7 +240,7 @@ export async function deleteExercise(userId: string, id: string) {
 }
 
 /**
- * Sposta su Drive ("I miei esercizi") i file caricati sul sito prima di Drive.
+ * Sposta su Drive ("I miei file") i file caricati sul sito prima di Drive.
  * Si fa al primo accesso con Google; se Drive non risponde si riprova all'accesso successivo.
  */
 export async function migrateLegacyExercises(userId: string): Promise<number> {

@@ -88,7 +88,7 @@ export function CalendarImport({ holidays, onImported }: { holidays: HolidayDTO[
         holidays: preview.holidays.filter((_, i) => !skip.has(i)),
       });
       const parts = [
-        r.created ? `Anno ${year.name} creato, con la cartella in Cartelle` : `Anno ${year.name} aggiornato`,
+        r.created ? `Anno ${year.name} creato, con la cartella in Piano Lezione` : `Anno ${year.name} aggiornato`,
         `${r.holidaysAdded} ${r.holidaysAdded === 1 ? "vacanza aggiunta" : "vacanze aggiunte"}`,
       ];
       toast(parts.join(" · "));
@@ -427,8 +427,8 @@ export function GoogleAccountBox() {
         <p className="font-medium">{g ? g.email : me.email}</p>
         <p className={g?.driveAuthorized ? "text-[13px] text-ok" : "text-[13px] text-warn"}>
           {g?.driveAuthorized
-            ? "Google Drive autorizzato: gli esercizi vanno nella cartella «PianoStudio» del tuo Drive."
-            : "Google Drive non autorizzato: non puoi caricare esercizi nelle tue cartelle."}
+            ? "Google Drive autorizzato: i file vanno nella cartella «PianoStudio» del tuo Drive."
+            : "Google Drive non autorizzato: non puoi caricare file nelle tue cartelle."}
         </p>
       </div>
       {!g?.driveAuthorized && (

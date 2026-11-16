@@ -38,7 +38,7 @@ export default function NotifichePage() {
     setBusy(id);
     try {
       await api.post(`/api/invites/${id}/${accept ? "accept" : "decline"}`);
-      toast(accept ? "Invito accettato: la cartella è tra i tuoi esercizi" : "Invito rifiutato");
+      toast(accept ? "Invito accettato: la cartella è tra i tuoi file" : "Invito rifiutato");
       await load();
       window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED));
     } catch (e) {
@@ -80,7 +80,7 @@ export default function NotifichePage() {
             ))}
           </ul>
           <p className="mt-2 text-[13px] text-muted">
-            Accettando, la cartella compare tra i tuoi <Link href="/esercizi" className="text-accent hover:underline">Esercizi</Link> e
+            Accettando, la cartella compare tra i tuoi <Link href="/file" className="text-accent hover:underline">File</Link> e
             su Google Drive in «Condivisi con me». Puoi caricarci file e collegarli ai tuoi piani.
           </p>
         </section>

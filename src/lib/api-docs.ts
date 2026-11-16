@@ -28,10 +28,10 @@ const tipi: Record<string, Fields | string> = {
     google: "{ email, driveAuthorized: boolean } | null — account Google e permesso per Google Drive",
   },
   Persona: { id: "string", name: "string", email: "string" },
-  CartellaEsercizi: {
+  CartellaFile: {
     id: "string",
     name: "string",
-    isDefault: 'boolean — "I miei esercizi", che non si elimina',
+    isDefault: 'boolean — "I miei file", che non si elimina',
     parentId: "string | null — la cartella che la contiene; null per le cartelle principali",
     rootId: "string | null — la cartella principale; null se è lei la principale",
     role: '"owner" | "member" — rispetto alla cartella principale',
@@ -130,7 +130,7 @@ const tipi: Record<string, Fields | string> = {
     allegatiAuto: "boolean — true: gli allegati si ricavano dai materiali delle fasi",
     sezioniExtra: "{ id, titolo, testo }[]",
     notaPost: "string — dopo la lezione: cosa riprendere (non va nel PDF)",
-    exercises: "{ id, title, fileName, size }[] — esercizi collegati",
+    exercises: "{ id, title, fileName, size }[] — file collegati",
     isTemplate: "boolean",
     slotIds: "string[] — lezioni dell'orario collegate",
     slots: "Lezione[] — con gli orari effettivi del giorno del piano",
@@ -158,7 +158,7 @@ const tipi: Record<string, Fields | string> = {
     planCount: "numero di piani contenuti",
     schoolYearId: "string | null — cartella di un anno scolastico (\"Anno 2027/2028\")",
   },
-  Esercizio: {
+  File: {
     id: "string",
     title: "string",
     fileName: "string",
@@ -483,7 +483,7 @@ const gruppi: Record<string, Endpoint[]> = {
     {
       metodo: "POST",
       percorso: "/api/plans/restore",
-      descrizione: "Ricrea un piano eliminato (Annulla). Cartella, lezioni ed esercizi che non esistono più vengono lasciati fuori.",
+      descrizione: "Ricrea un piano eliminato (Annulla). Cartella, lezioni e file che non esistono più vengono lasciati fuori.",
       corpo: { "...": "gli stessi campi di PUT /api/plans/:id, con title obbligatorio", "isTemplate?": "boolean", "exerciseIds?": "string[]" },
       risposta: "Piano (con un id nuovo)",
     },
@@ -496,7 +496,7 @@ const gruppi: Record<string, Endpoint[]> = {
     { metodo: "GET", percorso: "/api/materials", descrizione: "I materiali già usati nei propri piani, dal più frequente (per i suggerimenti).", risposta: "string[]" },
   ],
 
-  Cartelle: [
+  "Cartelle dei piani lezione": [
     { metodo: "GET", percorso: "/api/folders", descrizione: "Tutte le cartelle (elenco piatto: l'albero si ricostruisce con parentId).", risposta: "Cartella[]" },
     {
       metodo: "POST",
@@ -531,22 +531,22 @@ const gruppi: Record<string, Endpoint[]> = {
     },
   ],
 
-  Esercizi: [
+  "File (su Google Drive)": [
     {
       metodo: "GET",
       percorso: "/api/exercises",
-      descrizione: "Gli esercizi che posso vedere (mie cartelle e cartelle condivise con me), dal più recente.",
+      descrizione: "I file che posso vedere (mie cartelle e cartelle condivise con me), dal più recente.",
       parametri: {
         "folderId?": "solo questa cartella (senza le sottocartelle)",
         "q?": "testo cercato in titolo, nome del file, nota ed etichette",
         "tag?": "solo i file con questa etichetta",
       },
-      risposta: "Esercizio[]",
+      risposta: "File[]",
     },
     {
       metodo: "GET",
       percorso: "/api/exercises/tags",
-      descrizione: "Le etichette usate negli esercizi che vedo, con quanti file le hanno: prima quelle pronte, poi le altre.",
+      descrizione: "Le etichette usate nei file che vedo, con quanti file le hanno: prima quelle pronte, poi le altre.",
       risposta: "{ tag, count }[]",
     },
     {
@@ -556,20 +556,20 @@ const gruppi: Record<string, Endpoint[]> = {
         "Carica uno o più file (multipart/form-data) su Google Drive, nella cartella indicata: in una cartella condivisa il file va sul Drive del proprietario. PDF, Word, Excel, PowerPoint, OpenDocument, immagini, testo, GeoGebra, zip. Massimo 15 MB per file, 20 file per volta.",
       corpo: {
         file: "uno o più file",
-        "folderId?": 'string — cartella di esercizi (predefinita: "I miei esercizi")',
+        "folderId?": 'string — cartella di file (predefinita: "I miei file")',
         "title?": "string (solo con un file)",
         "planId?": "string — li collega subito a questo mio piano",
         "tag?": "string, anche più volte — etichette",
       },
-      risposta: "Esercizio[]",
+      risposta: "File[]",
       errori: {
         400: "tipo di file non ammesso, file troppo grande o PDF non valido",
         409: "Google Drive non autorizzato per il proprietario della cartella",
       },
     },
-    { metodo: "GET", percorso: "/api/exercises/:id", descrizione: "Un esercizio.", risposta: "Esercizio" },
-    { metodo: "PATCH", percorso: "/api/exercises/:id", descrizione: "Cambia titolo o nota, o sposta il file in un'altra cartella dello stesso Drive (proprietario della cartella o chi l'ha caricato). Spostando, il file sparisce dai piani di chi non vede la nuova cartella. Le etichette le può cambiare chiunque veda il file.", corpo: { "title?": "string", "note?": "string", "folderId?": "string — cartella in cui spostarlo", "tags?": "string[] — sostituisce le etichette (al massimo 12, da 30 caratteri)" }, risposta: "Esercizio", errori: { 400: "la cartella è su un altro Drive" } },
-    { metodo: "DELETE", percorso: "/api/exercises/:id", descrizione: "Elimina l'esercizio: su Google Drive va nel cestino, dai piani sparisce il collegamento (proprietario della cartella o chi l'ha caricato).", risposta: ok },
+    { metodo: "GET", percorso: "/api/exercises/:id", descrizione: "Un file.", risposta: "File" },
+    { metodo: "PATCH", percorso: "/api/exercises/:id", descrizione: "Cambia titolo o nota, o sposta il file in un'altra cartella dello stesso Drive (proprietario della cartella o chi l'ha caricato). Spostando, il file sparisce dai piani di chi non vede la nuova cartella. Le etichette le può cambiare chiunque veda il file.", corpo: { "title?": "string", "note?": "string", "folderId?": "string — cartella in cui spostarlo", "tags?": "string[] — sostituisce le etichette (al massimo 12, da 30 caratteri)" }, risposta: "File", errori: { 400: "la cartella è su un altro Drive" } },
+    { metodo: "DELETE", percorso: "/api/exercises/:id", descrizione: "Elimina il file: su Google Drive va nel cestino, dai piani sparisce il collegamento (proprietario della cartella o chi l'ha caricato).", risposta: ok },
     {
       metodo: "GET",
       percorso: "/api/exercises/:id/file",
@@ -577,17 +577,17 @@ const gruppi: Record<string, Endpoint[]> = {
       parametri: { "download?": '"1" per scaricarlo sempre (file caricati prima di Drive)' },
       risposta: "reindirizzamento a Drive, oppure il file",
     },
-    { metodo: "POST", percorso: "/api/exercises/:id/plans/:planId", descrizione: "Collega l'esercizio a un piano.", risposta: "Esercizio" },
-    { metodo: "DELETE", percorso: "/api/exercises/:id/plans/:planId", descrizione: "Toglie il collegamento (il file resta).", risposta: "Esercizio" },
+    { metodo: "POST", percorso: "/api/exercises/:id/plans/:planId", descrizione: "Collega il file a un piano.", risposta: "File" },
+    { metodo: "DELETE", percorso: "/api/exercises/:id/plans/:planId", descrizione: "Toglie il collegamento (il file resta).", risposta: "File" },
   ],
 
-  "Cartelle di esercizi (Google Drive)": [
+  "Cartelle di file (Google Drive)": [
     {
       metodo: "GET",
       percorso: "/api/material-folders",
       descrizione:
-        'Le mie cartelle di esercizi e quelle condivise con me, sottocartelle comprese (elenco piatto: l\'albero si ricostruisce con parentId). "I miei esercizi" si crea da sola sul mio Drive.',
-      risposta: { folders: "CartellaEsercizi[]", driveAuthorized: "boolean — false se non ho autorizzato Google Drive" },
+        'Le mie cartelle di file e quelle condivise con me, sottocartelle comprese (elenco piatto: l\'albero si ricostruisce con parentId). "I miei file" si crea da sola sul mio Drive.',
+      risposta: { folders: "CartellaFile[]", driveAuthorized: "boolean — false se non ho autorizzato Google Drive" },
     },
     {
       metodo: "POST",
@@ -624,7 +624,7 @@ const gruppi: Record<string, Endpoint[]> = {
       metodo: "DELETE",
       percorso: "/api/material-folders/:id",
       descrizione:
-        "Elimina la cartella per tutti, con sottocartelle e file: su Drive va nel cestino. Il proprietario, o chi ha creato la sottocartella; \"I miei esercizi\" non si elimina.",
+        "Elimina la cartella per tutti, con sottocartelle e file: su Drive va nel cestino. Il proprietario, o chi ha creato la sottocartella; \"I miei file\" non si elimina.",
       risposta: ok,
     },
     {
@@ -759,7 +759,7 @@ const gruppi: Record<string, Endpoint[]> = {
     {
       metodo: "GET",
       percorso: "/api/export",
-      descrizione: "Copia di sicurezza di tutti i propri dati in JSON (senza password, token, chiavi, link dei calendari e file degli esercizi).",
+      descrizione: "Copia di sicurezza di tutti i propri dati in JSON (senza password, token, chiavi, link dei calendari e file su Drive).",
       risposta: "file JSON da scaricare",
     },
   ],
@@ -808,7 +808,7 @@ export const apiDocs = {
     token:
       'Intestazione "Authorization: Bearer ps_…", con un token creato in Impostazioni → Accesso API. Ambito "read": solo GET; "write": tutte le operazioni. Con un token non si possono gestire token, chiavi AI, calendari collegati e impostazioni.',
     regola:
-      "Tutte le rotte richiedono la sessione o un token, tranne quelle con autenticazione: false. Ogni utente vede e modifica solo i propri dati, più le cartelle di esercizi condivise con lui: una risorsa altrui risponde 404.",
+      "Tutte le rotte richiedono la sessione o un token, tranne quelle con autenticazione: false. Ogni utente vede e modifica solo i propri dati, più le cartelle di file condivise con lui: una risorsa altrui risponde 404.",
   },
   convenzioni: {
     corpo: 'Le richieste con corpo vogliono l\'intestazione "Content-Type: application/json". Nei campi, "?" dopo il nome significa facoltativo.',

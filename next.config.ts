@@ -12,7 +12,10 @@ const nextConfig: NextConfig = {
       // Ci si iscrive accedendo con Google: la registrazione con password non c'è più.
       { source: "/registrati", destination: "/login", permanent: false },
       // Lo Storico è stato tolto: le versioni di un piano restano nell'editor.
-      { source: "/storico", destination: "/cartelle", permanent: false },
+      { source: "/storico", destination: "/piani", permanent: false },
+      // Cartelle è diventata Piano Lezione, Esercizi è diventata File.
+      { source: "/cartelle", destination: "/piani", permanent: false },
+      { source: "/esercizi", destination: "/file", permanent: false },
     ];
   },
   turbopack: {

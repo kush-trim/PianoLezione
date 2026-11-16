@@ -47,7 +47,7 @@ function contentSummary(t: { files: number; subfolders: number; bytes: number })
     .join(" · ");
 }
 
-/** Scelta di un piano a cui collegare un esercizio. */
+/** Scelta di un piano a cui collegare un file. */
 function PlanPicker({ exercise, onClose, onLinked }: { exercise: ExerciseDTO | null; onClose: () => void; onLinked: () => void }) {
   const toast = useToast();
   const [q, setQ] = useState("");
@@ -509,7 +509,7 @@ function CopyDialog({
   );
 }
 
-export default function EserciziPage() {
+export default function FilePage() {
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
   const [me, setMe] = useState<UserDTO | null>(null);
@@ -690,7 +690,7 @@ export default function EserciziPage() {
   const toggle = (id: string, open: boolean) => setToggled((prev) => new Map(prev).set(id, open));
   const mine = all.filter((f) => !f.parentId && f.role === "owner");
   const shared = all.filter((f) => !f.parentId && f.role === "member");
-  const authorize = `/api/auth/google?drive=1&next=${encodeURIComponent("/esercizi")}`;
+  const authorize = `/api/auth/google?drive=1&next=${encodeURIComponent("/file")}`;
 
   // Le etichette dei file mostrati, con quanti file le hanno; il filtro tiene solo quei file.
   const tagCounts = new Map<string, { tag: string; n: number }>();
@@ -719,7 +719,7 @@ export default function EserciziPage() {
     <div>
       <header className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-[26px] leading-tight font-semibold">Esercizi</h1>
+          <h1 className="font-display text-[26px] leading-tight font-semibold">File</h1>
           <p className="mt-0.5 text-muted">I file stanno su Google Drive, nella cartella «PianoStudio». Le cartelle si possono condividere con i colleghi.</p>
         </div>
         <label className="relative">
@@ -729,7 +729,7 @@ export default function EserciziPage() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Cerca in tutte le cartelle"
-            aria-label="Cerca negli esercizi"
+            aria-label="Cerca nei file"
             className="w-64 pl-8"
           />
         </label>
@@ -749,7 +749,7 @@ export default function EserciziPage() {
       )}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[270px_minmax(0,1fr)]">
-        <nav aria-label="Cartelle di esercizi" className="self-start rounded-xl border border-line bg-surface p-2">
+        <nav aria-label="Cartelle di file" className="self-start rounded-xl border border-line bg-surface p-2">
           <p className="px-2 pt-1 pb-1.5 text-xs font-semibold tracking-wide text-muted uppercase">Le mie cartelle</p>
           {tree(mine)}
           <button
@@ -868,7 +868,7 @@ export default function EserciziPage() {
             )
           )}
           {folder?.isDefault && !q && !subfolders.length && (
-            <p className="mb-3 text-[13px] text-muted">Per condividere esercizi con un collega crea una cartella con «Nuova cartella» e usa «Condividi».</p>
+            <p className="mb-3 text-[13px] text-muted">Per condividere file con un collega crea una cartella con «Nuova cartella» e usa «Condividi».</p>
           )}
 
           {subfolders.length > 0 && (
@@ -930,7 +930,7 @@ export default function EserciziPage() {
               </p>
             ) : (
               <EmptyState
-                title={q ? "Nessun esercizio trovato" : "Cartella vuota"}
+                title={q ? "Nessun file trovato" : "Cartella vuota"}
                 action={
                   !q &&
                   folder && (
@@ -1065,7 +1065,7 @@ export default function EserciziPage() {
         )}
       </Dialog>
 
-      <Dialog open={!!editing} onClose={() => setEditing(null)} title="Modifica esercizio">
+      <Dialog open={!!editing} onClose={() => setEditing(null)} title="Modifica file">
         <form onSubmit={saveEdit} className="space-y-4">
           <Field label="Titolo">
             <Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} required autoFocus />
