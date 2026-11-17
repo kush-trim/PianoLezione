@@ -14,6 +14,6 @@ export const GET = route(async (req) => {
   try {
     return { models: await listModels(provider, key), suggested: DEFAULT_MODEL[provider] };
   } catch (e) {
-    throw new ApiError(502, e instanceof Error ? e.message : "Impossibile leggere l'elenco dei modelli");
+    throw new ApiError(424, e instanceof Error ? e.message : "Impossibile leggere l'elenco dei modelli");
   }
 });

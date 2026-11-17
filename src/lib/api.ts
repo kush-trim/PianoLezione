@@ -27,7 +27,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       // eslint-disable-next-line @next/next/no-location-assign-relative-destination
       window.location.assign("/login");
     }
-    throw new HttpError(res.status, data?.error ?? "Qualcosa non ha funzionato.");
+    // Senza un messaggio dell'app la risposta viene da chi sta davanti al server (es. una pagina
+    // di errore di Cloudflare): almeno il codice aiuta a capire cosa è successo.
+    throw new HttpError(res.status, data?.error ?? `Il server non ha risposto come previsto (errore ${res.status}). Riprova tra poco.`);
   }
   return data as T;
 }

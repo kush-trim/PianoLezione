@@ -779,7 +779,7 @@ const gruppi: Record<string, Endpoint[]> = {
       descrizione: "I modelli utilizzabili con la chiave salvata, letti dal fornitore.",
       parametri: { provider: '"anthropic" | "google" | "openai"' },
       risposta: { models: "string[]", suggested: "string — modello proposto (può essere vuoto)" },
-      errori: { 400: "nessuna chiave salvata per quel fornitore", 502: "il fornitore ha rifiutato la chiave o non risponde" },
+      errori: { 400: "nessuna chiave salvata per quel fornitore", 424: "il fornitore ha rifiutato la chiave o non risponde" },
     },
     {
       metodo: "POST",

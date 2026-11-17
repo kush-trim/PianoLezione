@@ -7,6 +7,7 @@ import { randomBytes } from "node:crypto";
 import { decrypt } from "./crypto";
 import { db } from "./db";
 import { GoogleError, hasDriveScope, refreshAccessToken } from "./google-oauth";
+import { driveError } from "./drive-errors";
 import { ApiError } from "./http";
 
 export type DriveFile = { id: string; name: string; mimeType: string; size: number; webViewLink: string };
@@ -59,7 +60,8 @@ async function accessToken(userId: string): Promise<string> {
       await db.googleAccount.update({ where: { userId }, data: { refreshTokenEnc: "" } });
       throw new DriveNotAuthorized(userId);
     }
-    throw new ApiError(502, "Google Drive non risponde. Riprova tra poco.");
+    // Non 502: Cloudflare sostituirebbe la risposta con una sua pagina (vedi drive-errors.ts).
+    throw new ApiError(503, "Google Drive non risponde. Riprova tra poco.");
   }
 }
 
@@ -90,9 +92,7 @@ async function call(userId: string, url: string, init: RequestInit = {}): Promis
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     console.error("Google Drive", res.status, url.replace(/\?.*/, ""), body.slice(0, 500));
-    if (res.status === 404) throw new ApiError(404, "Il file o la cartella non esiste più su Google Drive");
-    if (res.status === 403 && /storageQuota/i.test(body)) throw new ApiError(507, "Lo spazio su Google Drive è esaurito");
-    throw new ApiError(502, "Google Drive ha rifiutato l'operazione");
+    throw driveError(res.status, body);
   }
   return res;
 }
