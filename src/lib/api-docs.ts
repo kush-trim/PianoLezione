@@ -197,6 +197,8 @@ const tipi: Record<string, Fields | string> = {
     aiModel: "string",
     aiKeys: "{ anthropic: boolean, google: boolean, openai: boolean } — dice solo se una chiave è salvata",
     calendars: "{ id, name, host, asHolidays }[] — il link completo non viene mai restituito",
+    theme: '"carta" | "salvia" | "cielo" | "notte" | "lavagna" | "grafite" | "custom"',
+    customTheme: '{ scheme: "light" | "dark", paper, ink, accent } | null — colori #rrggbb del tema personalizzato',
   },
   Proposta: {
     sintesi: "string",
@@ -694,6 +696,8 @@ const gruppi: Record<string, Endpoint[]> = {
         "aiProvider?": '"anthropic" | "google" | "openai" | "" (vuoto = disattivato)',
         "aiModel?": "string",
         "aiKey?": "{ provider, key: string | null } — null cancella la chiave di quel fornitore",
+        "theme?": '"carta" | "salvia" | "cielo" | "notte" | "lavagna" | "grafite" | "custom"',
+        "customTheme?": '{ scheme: "light" | "dark", paper, ink, accent } — colori #rrggbb',
       },
       risposta: "Impostazioni",
     },

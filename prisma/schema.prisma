@@ -193,6 +193,8 @@ model UserSettings {
   aiKeysEnc     String  @default("") // JSON cifrato: { anthropic?, google?, openai? }
   calendarsEnc  String  @default("") // JSON cifrato: [{ id, name, url, asHolidays }]
   seeded        Boolean @default(false) // verbi e anno scolastico iniziali già creati
+  theme         String  @default("carta") // id di un tema pronto, oppure "custom"
+  customTheme   String  @default("") // JSON: { scheme, paper, ink, accent }
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

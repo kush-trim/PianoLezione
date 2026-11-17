@@ -52,7 +52,7 @@ export function TimeBar({
               key={p.id}
               title={`${p.name || "Fase"} · ${p.durationMin}’`}
               className={cx(
-                "tabular flex items-center justify-center overflow-hidden border-r border-surface text-xs font-medium text-white",
+                "tabular flex items-center justify-center overflow-hidden border-r border-surface text-xs font-medium text-on-accent",
                 t?.overflow ? "bg-warn" : i % 2 ? "bg-accent/75" : "bg-accent",
               )}
               style={{ width: `${(p.durationMin / scale) * 100}%` }}

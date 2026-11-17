@@ -177,7 +177,7 @@ export default function NuovoPianoPage() {
               <span
                 className={cx(
                   "tabular flex size-5 shrink-0 items-center justify-center rounded-full text-xs",
-                  step === i ? "bg-accent text-white" : i < step ? "bg-accent-soft text-accent" : "bg-sunken",
+                  step === i ? "bg-accent text-on-accent" : i < step ? "bg-accent-soft text-accent" : "bg-sunken",
                 )}
               >
                 {i < step ? <Check className="size-3" /> : i + 1}
@@ -373,7 +373,7 @@ export default function NuovoPianoPage() {
             {phases.length === 0 && <p className="text-muted">Nessuna fase: aggiungine una qui sotto, oppure premi «Proponi di nuovo».</p>}
 
             <div className="flex flex-wrap items-center gap-1.5">
-              <button type="button" onClick={() => setPhases([...phases, newPhase()])} className="inline-flex h-7 items-center gap-1 rounded-full bg-accent px-3 text-[13px] font-medium text-white hover:bg-accent-hover">
+              <button type="button" onClick={() => setPhases([...phases, newPhase()])} className="inline-flex h-7 items-center gap-1 rounded-full bg-accent px-3 text-[13px] font-medium text-on-accent hover:bg-accent-hover">
                 <Plus className="size-3.5" /> Fase vuota
               </button>
               {phaseTemplates.map((t) => (

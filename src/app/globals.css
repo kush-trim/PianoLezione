@@ -17,6 +17,42 @@
   --danger-soft: #fbe4e1;
   --ok: #1f6b3a;
   --ok-soft: #dff1e4;
+  --on-accent: #ffffff;
+  --on-danger: #ffffff;
+
+  /* Colori di lezioni e cartelle (src/lib/colors.ts); i temi scuri li ricalcolano. */
+  --sw-slate-bg: #eceef0;
+  --sw-slate-border: #c3c9cf;
+  --sw-slate-text: #2c353d;
+  --sw-slate-solid: #5b6770;
+  --sw-blue-bg: #e1ecfa;
+  --sw-blue-border: #a9c6ee;
+  --sw-blue-text: #143f73;
+  --sw-blue-solid: #2f6fc0;
+  --sw-teal-bg: #d9eeeb;
+  --sw-teal-border: #9bcdc6;
+  --sw-teal-text: #0c4a4a;
+  --sw-teal-solid: #16807d;
+  --sw-green-bg: #e0f0dc;
+  --sw-green-border: #a9d19f;
+  --sw-green-text: #23521a;
+  --sw-green-solid: #3f8a2f;
+  --sw-amber-bg: #fbefc9;
+  --sw-amber-border: #e6cb74;
+  --sw-amber-text: #614400;
+  --sw-amber-solid: #b88a00;
+  --sw-orange-bg: #fde6d3;
+  --sw-orange-border: #f0b78a;
+  --sw-orange-text: #6e3408;
+  --sw-orange-solid: #cf6a1d;
+  --sw-rose-bg: #fbe0e4;
+  --sw-rose-border: #eda9b4;
+  --sw-rose-text: #74162a;
+  --sw-rose-solid: #c23a55;
+  --sw-violet-bg: #ebe3f8;
+  --sw-violet-border: #c3aee8;
+  --sw-violet-text: #3f2378;
+  --sw-violet-solid: #7450c4;
 }
 
 @theme inline {
@@ -36,12 +72,15 @@
   --color-danger-soft: var(--danger-soft);
   --color-ok: var(--ok);
   --color-ok-soft: var(--ok-soft);
+  --color-on-accent: var(--on-accent);
+  --color-on-danger: var(--on-danger);
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
   --font-display: var(--font-newsreader), Georgia, serif;
 }
 
-html {
+/* Il tema dell'utente (layout di (app)) riscrive queste variabili e color-scheme su :root. */
+:root {
   color-scheme: light;
 }
 

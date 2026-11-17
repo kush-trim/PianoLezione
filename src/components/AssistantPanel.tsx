@@ -183,7 +183,7 @@ export function AssistantPanel({
                   <p
                     className={cx(
                       "max-w-[92%] rounded-xl px-3 py-2 leading-relaxed whitespace-pre-wrap",
-                      m.role === "user" ? "bg-accent text-white" : "bg-sunken",
+                      m.role === "user" ? "bg-accent text-on-accent" : "bg-sunken",
                     )}
                   >
                     {m.content || "…"}

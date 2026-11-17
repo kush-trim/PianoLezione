@@ -1,12 +1,13 @@
-// Colori per lezioni e cartelle. Valori espliciti (usati via style) così
-// non dipendono dalle classi generate da Tailwind.
+// Colori per lezioni e cartelle. Si usano via style, così non dipendono dalle
+// classi generate da Tailwind. I valori sono variabili CSS: cambiano col tema
+// (vedi theme.ts); quelli chiari qui sotto sono anche i valori di partenza in globals.css.
 
 export const COLOR_NAMES = ["slate", "blue", "teal", "green", "amber", "orange", "rose", "violet"] as const;
 export type ColorName = (typeof COLOR_NAMES)[number];
 
 type Swatch = { bg: string; border: string; text: string; solid: string; label: string };
 
-export const PALETTE: Record<ColorName, Swatch> = {
+export const LIGHT_SWATCHES: Record<ColorName, Swatch> = {
   slate: { bg: "#eceef0", border: "#c3c9cf", text: "#2c353d", solid: "#5b6770", label: "Grigio" },
   blue: { bg: "#e1ecfa", border: "#a9c6ee", text: "#143f73", solid: "#2f6fc0", label: "Blu" },
   teal: { bg: "#d9eeeb", border: "#9bcdc6", text: "#0c4a4a", solid: "#16807d", label: "Verde acqua" },
@@ -16,5 +17,18 @@ export const PALETTE: Record<ColorName, Swatch> = {
   rose: { bg: "#fbe0e4", border: "#eda9b4", text: "#74162a", solid: "#c23a55", label: "Rosa" },
   violet: { bg: "#ebe3f8", border: "#c3aee8", text: "#3f2378", solid: "#7450c4", label: "Viola" },
 };
+
+export const PALETTE = Object.fromEntries(
+  COLOR_NAMES.map((name) => [
+    name,
+    {
+      bg: `var(--sw-${name}-bg)`,
+      border: `var(--sw-${name}-border)`,
+      text: `var(--sw-${name}-text)`,
+      solid: `var(--sw-${name}-solid)`,
+      label: LIGHT_SWATCHES[name].label,
+    },
+  ]),
+) as Record<ColorName, Swatch>;
 
 export const swatch = (name: string): Swatch => PALETTE[name as ColorName] ?? PALETTE.slate;

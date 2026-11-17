@@ -1,5 +1,7 @@
 // Forme dei dati scambiati tra API e frontend.
 
+import type { CustomTheme } from "./theme";
+
 export type SezioneExtra = { id: string; titolo: string; testo: string };
 
 /** Un obiettivo strutturato: soggetto fisso (docente / allievo) + verbo dell'elenco + testo. */
@@ -168,6 +170,10 @@ export type SettingsDTO = {
   /** Per quali fornitori è stata salvata una chiave (la chiave non esce mai dal server). */
   aiKeys: Record<AiProvider, boolean>;
   calendars: { id: string; name: string; host: string; asHolidays: boolean }[];
+  /** Id di un tema pronto oppure "custom". */
+  theme: string;
+  /** Il tema personalizzato salvato, anche quando non è quello in uso. */
+  customTheme: CustomTheme | null;
 };
 
 export type WeekDTO = {

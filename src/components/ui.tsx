@@ -27,7 +27,7 @@ type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const VARIANTS = {
-  primary: "bg-accent text-white hover:bg-accent-hover",
+  primary: "bg-accent text-on-accent hover:bg-accent-hover",
   secondary: "border border-line-strong bg-surface hover:bg-sunken",
   ghost: "text-ink hover:bg-sunken",
   danger: "text-danger hover:bg-danger-soft",
@@ -315,7 +315,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             key={t.id}
             className={cx(
               "pointer-events-auto flex max-w-sm items-center gap-3 rounded-lg px-3.5 py-2.5 text-[13px] shadow-lg",
-              t.kind === "error" ? "bg-danger text-white" : "bg-ink text-white",
+              t.kind === "error" ? "bg-danger text-on-danger" : "bg-ink text-paper",
             )}
           >
             <span className="flex-1">{t.text}</span>

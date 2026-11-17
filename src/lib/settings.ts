@@ -3,6 +3,7 @@
 import { defaultSchoolYear } from "./calendar";
 import { decryptJson } from "./crypto";
 import { db } from "./db";
+import { findPreset, parseCustomTheme, CUSTOM_THEME, DEFAULT_THEME } from "./theme";
 import { today } from "./plan-utils";
 import type { AiProvider, SettingsDTO, VerbKind } from "./types";
 
@@ -84,5 +85,7 @@ export function toSettingsDTO(settings: Awaited<ReturnType<typeof ensureSettings
       host: hostOf(c.url),
       asHolidays: c.asHolidays,
     })),
+    theme: settings.theme === CUSTOM_THEME || findPreset(settings.theme) ? settings.theme : DEFAULT_THEME,
+    customTheme: parseCustomTheme(settings.customTheme),
   };
 }

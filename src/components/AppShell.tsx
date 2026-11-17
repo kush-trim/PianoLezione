@@ -5,7 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { api } from "@/lib/api";
-import type { NotificationsDTO, UserDTO } from "@/lib/types";
+import { applyTheme, forgetTheme, themeFromSettings } from "@/lib/theme-client";
+import type { NotificationsDTO, SettingsDTO, UserDTO } from "@/lib/types";
 import { CommandPalette } from "./CommandPalette";
 import { cx, modLabel, ToastProvider } from "./ui";
 
@@ -54,6 +55,7 @@ function UserBox() {
 
   async function logout() {
     await api.post("/api/auth/logout").catch(() => {});
+    forgetTheme();
     // Ricarica completa voluta: lo stato in memoria dipende dalla sessione.
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.assign("/login");
@@ -112,7 +114,7 @@ function NotificationsLink({ pathname }: { pathname: string | null }) {
       <span className="relative">
         <Bell className="size-4 shrink-0" aria-hidden />
         {unread > 0 && (
-          <span className="tabular absolute -top-1.5 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] leading-none font-semibold text-white">
+          <span className="tabular absolute -top-1.5 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger px-1 text-[10px] leading-none font-semibold text-on-danger">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
@@ -148,9 +150,22 @@ function SearchButton() {
   );
 }
 
+/**
+ * Allinea il tema a quello salvato nell'account. Di solito è già quello giusto
+ * (lo script in <head> riapplica l'ultima copia); serve su un browser nuovo o
+ * dopo un cambio fatto da un altro dispositivo.
+ */
+function ThemeSync() {
+  useEffect(() => {
+    api.get<SettingsDTO>("/api/settings").then((s) => applyTheme(themeFromSettings(s)), () => {});
+  }, []);
+  return null;
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   return (
     <ToastProvider>
+      <ThemeSync />
       <div className="flex min-h-screen flex-col md:flex-row">
         <aside className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-1 border-b border-line bg-paper px-3 py-2 md:h-screen md:w-52 md:flex-col md:items-stretch md:justify-start md:gap-3 md:border-r md:border-b-0 md:px-3 md:py-4 print:hidden">
           <Link href="/settimana" className="font-display text-xl font-semibold tracking-tight md:mb-4 md:px-2.5">

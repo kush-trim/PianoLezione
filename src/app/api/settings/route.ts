@@ -12,7 +12,7 @@ export const GET = route(async () => {
 
 export const PUT = route(async (req) => {
   const user = await requireUser({ sessionOnly: true });
-  const { aiKey, ...fields } = settingsSchema.parse(await readJson(req));
+  const { aiKey, customTheme, ...fields } = settingsSchema.parse(await readJson(req));
   const current = await ensureSettings(user.id);
 
   let aiKeysEnc: string | undefined;
@@ -24,7 +24,11 @@ export const PUT = route(async (req) => {
   }
   const updated = await db.userSettings.update({
     where: { userId: user.id },
-    data: { ...fields, ...(aiKeysEnc !== undefined ? { aiKeysEnc } : {}) },
+    data: {
+      ...fields,
+      ...(aiKeysEnc !== undefined ? { aiKeysEnc } : {}),
+      ...(customTheme ? { customTheme: JSON.stringify(customTheme) } : {}),
+    },
   });
   // La risposta dice solo se una chiave c'è: la chiave non torna mai al browser.
   return toSettingsDTO(updated);

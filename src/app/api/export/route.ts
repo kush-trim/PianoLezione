@@ -21,7 +21,7 @@ export const GET = route(async () => {
     db.schoolYear.findMany({ where, omit: { userId: true } }),
     db.holiday.findMany({ where, omit: { userId: true } }),
     db.event.findMany({ where, omit: { userId: true } }),
-    db.userSettings.findUnique({ where, select: { lessonMinutes: true, defaultHours: true, aiProvider: true, aiModel: true } }),
+    db.userSettings.findUnique({ where, select: { lessonMinutes: true, defaultHours: true, aiProvider: true, aiModel: true, theme: true, customTheme: true } }),
   ]);
   const body = {
     formato: "pianostudio-backup",

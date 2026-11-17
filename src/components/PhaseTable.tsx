@@ -280,7 +280,7 @@ export function PhaseTable({
         <button
           type="button"
           onClick={() => add()}
-          className="inline-flex h-7 items-center gap-1 rounded-full bg-accent px-3 text-[13px] font-medium text-white hover:bg-accent-hover"
+          className="inline-flex h-7 items-center gap-1 rounded-full bg-accent px-3 text-[13px] font-medium text-on-accent hover:bg-accent-hover"
         >
           <Plus className="size-3.5" /> Fase vuota
         </button>

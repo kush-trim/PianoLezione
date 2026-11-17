@@ -70,7 +70,7 @@ export function YearStrip({
                 className={cx(
                   "tabular relative h-7 w-7 rounded text-xs font-medium transition-colors",
                   isSelected
-                    ? "bg-accent text-white"
+                    ? "bg-accent text-on-accent"
                     : w.number === null
                       ? "bg-sunken text-muted/60 hover:text-ink"
                       : "hover:bg-accent-soft",
@@ -80,7 +80,7 @@ export function YearStrip({
                 {w.number ?? "·"}
                 {w.plans > 0 && (
                   <span
-                    className={cx("absolute bottom-0.5 left-1/2 size-1 -translate-x-1/2 rounded-full", isSelected ? "bg-white" : "bg-accent")}
+                    className={cx("absolute bottom-0.5 left-1/2 size-1 -translate-x-1/2 rounded-full", isSelected ? "bg-on-accent" : "bg-accent")}
                   />
                 )}
               </button>

@@ -578,7 +578,7 @@ export default function PianoLezionePage() {
             {node.schoolYearId ? (
               <CalendarRange className="size-4 shrink-0" style={{ color: swatch(node.color).solid }} aria-label="Cartella di un anno scolastico" />
             ) : (
-              <Folder className="size-4 shrink-0" style={{ color: swatch(node.color).solid }} fill={swatch(node.color).bg} aria-hidden />
+              <Folder className="size-4 shrink-0" style={{ color: swatch(node.color).solid, fill: swatch(node.color).bg }} aria-hidden />
             )}
             <span className="truncate">{node.name}</span>
           </button>
@@ -784,7 +784,7 @@ export default function PianoLezionePage() {
                       {...dragProps("folder", f.id)}
                       {...dropProps(`row-${f.id}`, f.id)}
                     >
-                      <Folder className="size-4 shrink-0" style={{ color: swatch(f.color).solid }} fill={swatch(f.color).bg} aria-hidden />
+                      <Folder className="size-4 shrink-0" style={{ color: swatch(f.color).solid, fill: swatch(f.color).bg }} aria-hidden />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-medium">{f.name}</span>
                         <span className="block text-[13px] text-muted">
